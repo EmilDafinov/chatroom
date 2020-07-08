@@ -18,6 +18,7 @@ lazy val root = (project in file("."))
     fork in ThisBuild := true,
     publishArtifact in ThisBuild in packageDoc := false,
     publishArtifact in ThisBuild in packageSrc := false,
+    dockerExposedPorts ++= Seq(9000),
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-http"   % "10.1.12",
       "com.typesafe.akka" %% "akka-stream" % "2.5.26",

@@ -8,9 +8,10 @@ build:
       custom:
         dependencies:
           paths:
-            - "src/main"
-        buildCommand: "./src/main/script/buildMetricaImage.sh metrica"
+            - "src/main/scala"
+        buildCommand: "./src/main/script/buildImage.sh"
 metadata:
   name: chatroom
 deploy:
+  statusCheckDeadlineSeconds: 180
   kubectl:
