@@ -7,8 +7,6 @@ build:
     - image: chatroom
       custom:
         dependencies:
-          paths:
-            - "src/main/scala"
         buildCommand: "./src/main/script/buildImage.sh"
 metadata:
   name: chatroom

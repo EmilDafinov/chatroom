@@ -72,13 +72,6 @@ spec:
               scheme: HTTP
             initialDelaySeconds: 10
             timeoutSeconds: 2
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 9000
-              scheme: HTTP
-            initialDelaySeconds: 10
-            timeoutSeconds: 2
       volumes:
         - name: application-conf
           configMap:

@@ -1,7 +1,6 @@
 lazy val json4sVersion = "3.6.7"
-lazy val slickVersion = "3.3.1"
-lazy val akkaHttpVersion = "10.1.3"
 
+val AkkaVersion = "2.5.31"
 lazy val root = (project in file("."))
   .enablePlugins(
     JavaServerAppPackaging,
@@ -21,12 +20,16 @@ lazy val root = (project in file("."))
     dockerExposedPorts ++= Seq(9000),
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-http"   % "10.1.12",
-      "com.typesafe.akka" %% "akka-stream" % "2.5.26",
+      "com.lightbend.akka" %% "akka-stream-alpakka-hbase" % "2.0.1",
+      "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
+      "com.typesafe.akka" %% "akka-slf4j" % AkkaVersion,
+      "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
       "ch.qos.logback" % "logback-classic" % "1.2.3",
-      "com.typesafe.akka" %% "akka-slf4j" % "2.5.26",
       "de.heikoseeberger" %% "akka-http-json4s" % "1.33.0",
       "com.typesafe" % "config" % "1.4.0",
-    )
+      "org.json4s" % "json4s-core_2.12" % "3.7.0-M4"
+    ),
+    Global / onChangedBuildSource := ReloadOnSourceChanges
   )
   
 
@@ -38,6 +41,5 @@ lazy val versionSettings = Seq(
   // work if not set in ThisBuild
   dynverSonatypeSnapshots in ThisBuild := true,
   //Docker doesn't like `+` in version numbers
-  version in ThisBuild ~= (_.replace('+', '_')),
-  dynver in ThisBuild ~= (_.replace('+', '_'))
+  dynverSeparator in ThisBuild := "-"
 )

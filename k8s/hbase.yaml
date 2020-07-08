@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hbase
+  labels:
+    app: hbase
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: hbase
+  template:
+    metadata:
+      labels:
+        app: hbase
+    spec:
+      containers:
+        - name: hbase
+          image: liubin/hbase:1.2.6
+          env:
+            - name: COMPRESSION
+              value: NONE
+            - name: MODE
+              value: standalone      
+          ports:
+            - containerPort: 9000
+              name: hbase-port
