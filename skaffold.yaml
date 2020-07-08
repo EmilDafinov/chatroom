@@ -1,0 +1,16 @@
+apiVersion: skaffold/v2alpha2
+kind: Config
+build:
+  tagPolicy:
+    gitCommit: {}
+  artifacts:
+    - image: chatroom
+      custom:
+        dependencies:
+          paths:
+            - "src/main"
+        buildCommand: "./src/main/script/buildMetricaImage.sh metrica"
+metadata:
+  name: chatroom
+deploy:
+  kubectl:
