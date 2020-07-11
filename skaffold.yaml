@@ -7,6 +7,8 @@ build:
     - image: chatroom
       custom:
         dependencies:
+          paths:
+            - "src/main"
         buildCommand: "./src/main/script/buildImage.sh"
 metadata:
   name: chatroom

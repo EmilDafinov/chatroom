@@ -1,17 +1,19 @@
-lazy val json4sVersion = "3.6.7"
+import sbt.librarymanagement
+
+lazy val json4sVersion = "3.7.0-M4"
 
 val AkkaVersion = "2.5.31"
 lazy val root = (project in file("."))
   .enablePlugins(
     JavaServerAppPackaging,
-    AshScriptPlugin,
     DockerPlugin,
   )
   .settings(versionSettings)
   .settings(
     name := "chatroom",
-    organization in ThisBuild := "com.github.dafutils",
-    scalaVersion in ThisBuild := "2.13.3",
+    organization := "com.github.dafutils",
+    scalaVersion := "2.12.11",
+    resolvers += MavenRepo("hmrc", "https://hmrc.bintray.com/releases"),
     crossPaths in ThisBuild := false,
     parallelExecution in Test in ThisBuild := false,
     fork in ThisBuild := true,
@@ -27,9 +29,14 @@ lazy val root = (project in file("."))
       "ch.qos.logback" % "logback-classic" % "1.2.3",
       "de.heikoseeberger" %% "akka-http-json4s" % "1.33.0",
       "com.typesafe" % "config" % "1.4.0",
-      "org.json4s" % "json4s-core_2.12" % "3.7.0-M4"
+      "org.json4s" %% "json4s-jackson" % json4sVersion,
+      "org.json4s" %% "json4s-ext" % json4sVersion,
+      "uk.gov.hmrc" %% "emailaddress" % "3.4.0"
     ),
-    Global / onChangedBuildSource := ReloadOnSourceChanges
+    dockerBaseImage := "openjdk:11.0.7-jre",
+    mainClass in Compile := Some("com.github.dafutils.chat.Main"),
+    discoveredMainClasses in Compile := Seq.empty,
+    
   )
   
 
@@ -43,3 +50,4 @@ lazy val versionSettings = Seq(
   //Docker doesn't like `+` in version numbers
   dynverSeparator in ThisBuild := "-"
 )
+

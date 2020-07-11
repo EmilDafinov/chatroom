@@ -1,5 +1,6 @@
 package com.github.dafutils.chat
 
+import com.github.dafutils.chat.http.{HttpRoute, HttpServer}
 import com.typesafe.config.ConfigFactory
 
 
