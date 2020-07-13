@@ -1,4 +1,4 @@
-package com.github.dafutils.chat.http.model
+package com.github.dafutils.chatroom.http.model
 
 import uk.gov.hmrc.emailaddress.EmailAddress
 

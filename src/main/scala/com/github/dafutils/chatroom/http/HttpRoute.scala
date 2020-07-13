@@ -1,4 +1,4 @@
-package com.github.dafutils.chat.http
+package com.github.dafutils.chatroom.http
 
 import java.time.Instant
 
@@ -6,8 +6,8 @@ import akka.event.Logging
 import akka.event.Logging.InfoLevel
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import com.github.dafutils.chat.AkkaDependencies
-import com.github.dafutils.chat.http.model.{AddMessages, ChatroomMessage, NewChatroom, Pauses}
+import com.github.dafutils.chatroom.AkkaDependencies
+import com.github.dafutils.chatroom.http.model.{AddMessages, ChatroomMessage, NewChatroom, Pauses}
 import uk.gov.hmrc.emailaddress.EmailAddress
 
 trait HttpRoute {

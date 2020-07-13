@@ -1,6 +1,6 @@
-package com.github.dafutils.chat
+package com.github.dafutils.chatroom
 
-import com.github.dafutils.chat.http.{HttpRoute, HttpServer}
+import com.github.dafutils.chatroom.http.{HttpRoute, HttpServer}
 import com.typesafe.config.ConfigFactory
 
 

@@ -1,4 +1,4 @@
-package com.github.dafutils.chat
+package com.github.dafutils.chatroom
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer

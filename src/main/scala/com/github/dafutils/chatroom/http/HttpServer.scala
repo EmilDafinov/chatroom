@@ -1,4 +1,4 @@
-package com.github.dafutils.chat.http
+package com.github.dafutils.chatroom.http
 
 import akka.actor.ActorSystem
 import akka.event.Logging

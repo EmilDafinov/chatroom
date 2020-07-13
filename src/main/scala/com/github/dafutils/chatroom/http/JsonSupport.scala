@@ -1,4 +1,4 @@
-package com.github.dafutils.chat.http
+package com.github.dafutils.chatroom.http
 
 import de.heikoseeberger.akkahttpjson4s.Json4sSupport
 import org.json4s.JsonAST.JString
