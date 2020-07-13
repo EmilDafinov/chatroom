@@ -34,9 +34,6 @@ lazy val root = (project in file("."))
       "uk.gov.hmrc" %% "emailaddress" % "3.4.0"
     ),
     dockerBaseImage := "openjdk:11.0.7-jre",
-    mainClass in Compile := Some("com.github.dafutils.chat.Main"),
-    discoveredMainClasses in Compile := Seq.empty,
-    
   )
   
 
