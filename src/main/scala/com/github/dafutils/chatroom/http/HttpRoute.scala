@@ -8,10 +8,11 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import com.github.dafutils.chatroom.AkkaDependencies
 import com.github.dafutils.chatroom.http.model.{AddMessages, ChatroomMessage, NewChatroom, Pauses}
+import com.github.dafutils.chatroom.service.Services
 import uk.gov.hmrc.emailaddress.EmailAddress
 
 trait HttpRoute {
-  this: AkkaDependencies =>
+  this: AkkaDependencies with Services =>
   private val log = Logging(actorSystem, classOf[HttpRoute])
 
   import JsonSupport._
@@ -24,8 +25,10 @@ trait HttpRoute {
         & logRequestResult("requests", InfoLevel)) {
 
         (post & entity(as[NewChatroom])) { newChatroom =>
-          //Create a chatroom
-          complete(newChatroom)
+          complete(
+            chatroomService
+            .createChatroom(newChatroom)
+          )
         } ~
           pathPrefix(Segment) { chatroomName =>
             path("messages") {
