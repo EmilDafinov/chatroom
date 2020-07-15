@@ -25,6 +25,8 @@ lazy val root = (project in file("."))
       "com.lightbend.akka" %% "akka-stream-alpakka-hbase" % "2.0.1",
       "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
       "com.typesafe.akka" %% "akka-slf4j" % AkkaVersion,
+      "ch.qos.logback" % "logback-classic" % "1.2.3",
+      "log4j" % "log4j" % "1.2.17",
       "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
       "ch.qos.logback" % "logback-classic" % "1.2.3",
       "de.heikoseeberger" %% "akka-http-json4s" % "1.33.0",

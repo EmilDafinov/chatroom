@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: hbase
+  name: hbase-k8s
   labels:
-    app: hbase
+    app: hbase-k8s
 spec:
   replicas: 1
   strategy:
@@ -12,20 +12,57 @@ spec:
       maxUnavailable: 1
   selector:
     matchLabels:
-      app: hbase
+      app: hbase-k8s
   template:
     metadata:
       labels:
-        app: hbase
+        app: hbase-k8s
     spec:
       containers:
-        - name: hbase
-          image: liubin/hbase:1.2.6
+        - name: hbase-k8s
+          image: dajobe/hbase:latest
           env:
             - name: COMPRESSION
               value: NONE
             - name: MODE
               value: standalone      
+#            - name: HBASE_DOCKER_HOSTNAME
+#              value: hbase-k8s
           ports:
-            - containerPort: 9000
-              name: hbase-port
+            - containerPort: 8080
+              name: rest-api
+            - containerPort: 8085
+              name: rest-web-ui
+            - containerPort: 9090
+              name: thrift-api
+            - containerPort: 9095
+              name: thrift-web-ui
+            - containerPort: 2181
+              name: zookeeper
+            - containerPort: 16010
+              name: master-web-ui
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: hbase-k8s
+  labels:
+    app: hbase-k8s
+spec:
+  selector:
+    app: hbase-k8s
+  ports:
+    - port: 8080
+      name: rest-api
+    - port: 8085
+      name: rest-web-ui
+    - port: 9090
+      name: thrift-api
+    - port: 9095
+      name: thrift-web-ui
+    - port: 2181
+      name: zookeeper
+    - port: 16010
+      name: master-web-ui

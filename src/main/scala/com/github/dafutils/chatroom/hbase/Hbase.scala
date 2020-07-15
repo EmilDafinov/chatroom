@@ -5,16 +5,16 @@ import java.nio.charset.StandardCharsets.UTF_8
 import akka.stream.alpakka.hbase.HTableSettings
 import com.github.dafutils.chatroom.http.model.NewChatroom
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hbase.client.{Mutation, Put}
+import org.apache.hadoop.hbase.client.{HBaseAdmin, Mutation, Put}
 import org.apache.hadoop.hbase.{HBaseConfiguration, TableName}
 
 import scala.collection.immutable.Seq
 
 
-object Hbase {
+trait Hbase {
   val chatroomColumnFamily = "chatroom"
 
-  implicit def strToUtf8Bytes(s: Any) = s.toString.getBytes(UTF_8)
+  implicit def strToUtf8Bytes[T](s: T) = s.toString.getBytes(UTF_8)
 
   val chatroomConverter: NewChatroom => Seq[Mutation] = { chatroom =>
     val put = new Put(s"${chatroom.name}".getBytes(UTF_8))
@@ -28,10 +28,13 @@ object Hbase {
 
   val configuration: Configuration = {
     val conf = HBaseConfiguration.create()
+    conf.addResource(this.getClass.getClassLoader.getResource("hbase-site.xml").getPath)
+    
+    HBaseAdmin.checkHBaseAvailable(conf)
     conf
   }
 
-  val chatroomSettings = HTableSettings(
+  val chatroomSettings: HTableSettings[NewChatroom] = HTableSettings(
     conf = configuration,
     tableName = TableName.valueOf("chatrooms"),
     columnFamilies = Seq(chatroomColumnFamily),
