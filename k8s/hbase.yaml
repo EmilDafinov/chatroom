@@ -18,6 +18,7 @@ spec:
       labels:
         app: hbase-k8s
     spec:
+      hostname: hbase-k8s
       containers:
         - name: hbase-k8s
           image: dajobe/hbase:latest
@@ -41,6 +42,10 @@ spec:
               name: zookeeper
             - containerPort: 16010
               name: master-web-ui
+            - containerPort: 16000
+              name: something  
+            - containerPort: 16020
+              name: something2
 
 ---
 
@@ -66,3 +71,7 @@ spec:
       name: zookeeper
     - port: 16010
       name: master-web-ui
+    - port: 16000
+      name: something
+    - port: 16020
+      name: something2

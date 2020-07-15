@@ -28,8 +28,6 @@ trait Hbase {
 
   val configuration: Configuration = {
     val conf = HBaseConfiguration.create()
-    conf.addResource(this.getClass.getClassLoader.getResource("hbase-site.xml").getPath)
-    
     HBaseAdmin.checkHBaseAvailable(conf)
     conf
   }
