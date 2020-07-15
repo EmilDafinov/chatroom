@@ -22,13 +22,6 @@ spec:
       containers:
         - name: hbase-k8s
           image: dajobe/hbase:latest
-          env:
-            - name: COMPRESSION
-              value: NONE
-            - name: MODE
-              value: standalone      
-#            - name: HBASE_DOCKER_HOSTNAME
-#              value: hbase-k8s
           ports:
             - containerPort: 8080
               name: rest-api
