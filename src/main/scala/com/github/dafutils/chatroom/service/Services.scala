@@ -6,5 +6,8 @@ import com.github.dafutils.chatroom.hbase.Hbase
 trait Services {  
   this: AkkaDependencies with Hbase =>
 
-  val chatroomService = new ChatroomMessageService(chatroomSettings = chatroomSettings)
+  val chatroomService = new ChatroomMessageService(
+    createChatroomSettings = createChatroomSettings,
+    messagesSettings = messagesSettings
+  )
 }
