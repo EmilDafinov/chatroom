@@ -21,12 +21,18 @@ object MessagesColumnFamily {
 
 object ChatroomsColumnFamily {
   val columnFamilyName = "chatrooms"
+
+  val idColumnName = "id"
+  val nameColumnName = "name"
+  val createdColumnName = "created"
+  val participantsColumnName = "participants"
 }
 
 object Hbase {
   //TODO: That's bound to hurt performance wise: everything is stored as a string !
-  implicit def toUtf8Bytes[T](s: T) = s.toString.getBytes(UTF_8) 
-  
+  implicit def intToBytes(s: Int) = Bytes.toBytes(s) 
+  implicit def longToBytes(s: Long) = Bytes.toBytes(s) 
+  implicit def strToBytes(s: String) = Bytes.toBytes(s)
 }
 
 trait Hbase {
@@ -35,10 +41,11 @@ trait Hbase {
   val chatroomConverter: NewChatroom => Seq[Mutation] = { chatroom =>
     import ChatroomsColumnFamily._
     val put = new Put(chatroom.name)
-    put.addColumn(columnFamilyName, "id", chatroom.id)
-    put.addColumn(columnFamilyName, "name", chatroom.name)
-    put.addColumn(columnFamilyName, "created", chatroom.created)
-    put.addColumn(columnFamilyName, "participants", chatroom.participants.mkString(","))
+    
+    put.addColumn(columnFamilyName, idColumnName, chatroom.id)
+    put.addColumn(columnFamilyName, nameColumnName, chatroom.name)
+    put.addColumn(columnFamilyName, createdColumnName, chatroom.created)
+    put.addColumn(columnFamilyName, participantsColumnName, chatroom.participants.mkString(","))
     List(put)
   }
   
@@ -47,10 +54,10 @@ trait Hbase {
     addMessagesRequest.messages.map { message =>
       import MessagesColumnFamily._
       val put = new Put(s"${addMessagesRequest.chatRoomId}:${message.timestamp}")
-      put.addColumn(columnFamilyName, indexColumnName, Bytes.toBytes(message.index))
-      put.addColumn(columnFamilyName, timestampColumnName, Bytes.toBytes(message.timestamp))
-      put.addColumn(columnFamilyName, authorColumnName, Bytes.toBytes(message.author.value))
-      put.addColumn(columnFamilyName, messageContentColumnName, Bytes.toBytes(message.message))
+      put.addColumn(columnFamilyName, indexColumnName, message.index)
+      put.addColumn(columnFamilyName, timestampColumnName, message.timestamp)
+      put.addColumn(columnFamilyName, authorColumnName, message.author.value)
+      put.addColumn(columnFamilyName, messageContentColumnName, message.message)
       put
     }
   }
