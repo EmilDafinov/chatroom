@@ -6,6 +6,7 @@ import akka.stream.alpakka.hbase.HTableSettings
 import com.github.dafutils.chatroom.http.model.{AddMessages, NewChatroom}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.client.{HBaseAdmin, Mutation, Put}
+import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.{HBaseConfiguration, TableName}
 
 import scala.collection.immutable.Seq
@@ -31,8 +32,6 @@ object Hbase {
 trait Hbase {
   import Hbase._
   
-  
-
   val chatroomConverter: NewChatroom => Seq[Mutation] = { chatroom =>
     import ChatroomsColumnFamily._
     val put = new Put(chatroom.name)
@@ -48,10 +47,10 @@ trait Hbase {
     addMessagesRequest.messages.map { message =>
       import MessagesColumnFamily._
       val put = new Put(s"${addMessagesRequest.chatRoomId}:${message.timestamp}")
-      put.addColumn(columnFamilyName, indexColumnName, message.index)
-      put.addColumn(columnFamilyName, timestampColumnName, message.timestamp)
-      put.addColumn(columnFamilyName, authorColumnName, message.author)
-      put.addColumn(columnFamilyName, messageContentColumnName, message.message)
+      put.addColumn(columnFamilyName, indexColumnName, Bytes.toBytes(message.index))
+      put.addColumn(columnFamilyName, timestampColumnName, Bytes.toBytes(message.timestamp))
+      put.addColumn(columnFamilyName, authorColumnName, Bytes.toBytes(message.author.value))
+      put.addColumn(columnFamilyName, messageContentColumnName, Bytes.toBytes(message.message))
       put
     }
   }
