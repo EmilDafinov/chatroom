@@ -1,7 +1,7 @@
 package com.github.dafutils.chatroom
 
 import com.github.dafutils.chatroom.http.{HttpRoute, HttpServer}
-import com.github.dafutils.chatroom.service.ChatroomMessageRepository
+import com.github.dafutils.chatroom.service.hbase.ChatroomMessageRepository
 import com.typesafe.config.ConfigFactory
 
 

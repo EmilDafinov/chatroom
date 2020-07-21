@@ -1,12 +1,12 @@
-package com.github.dafutils.chatroom.service
+package com.github.dafutils.chatroom.service.hbase
 
 import akka.stream.Materializer
 import akka.stream.alpakka.hbase.HTableSettings
 import akka.stream.alpakka.hbase.scaladsl.HTableStage
 import akka.stream.scaladsl.Source
-
-import HbaseImplicits._
 import com.github.dafutils.chatroom.http.model.{AddMessages, ChatroomMessage, NewChatroom}
+import com.github.dafutils.chatroom.service.hbase.HbaseImplicits._
+import com.github.dafutils.chatroom.service.hbase.families.{ChatroomsColumnFamily, MessagesColumnFamily}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.TableName
 import org.apache.hadoop.hbase.client.{Mutation, Put, Scan}
@@ -18,7 +18,7 @@ import scala.collection.immutable.Seq
 class ChatroomMessageRepository(configuration: Configuration) {
 
   val chatroomConverter: NewChatroom => Seq[Mutation] = { chatroom =>
-    import ChatroomsColumnFamily._
+    import com.github.dafutils.chatroom.service.hbase.families.ChatroomsColumnFamily._
     val put = new Put(chatroom.name)
 
     put.addColumn(columnFamilyName, idColumnName, chatroom.id)

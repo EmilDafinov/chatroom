@@ -1,4 +1,4 @@
-package com.github.dafutils.chatroom.service
+package com.github.dafutils.chatroom.service.hbase.families
 
 object MessagesColumnFamily {
   val columnFamilyName = "messages"
