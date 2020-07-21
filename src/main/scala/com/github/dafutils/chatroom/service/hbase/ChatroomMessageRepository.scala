@@ -39,7 +39,7 @@ class ChatroomMessageRepository(configuration: Configuration) {
 
     addMessagesRequest.messages.map { message =>
       import MessagesColumnFamily._
-      val put = new Put(s"${addMessagesRequest.chatRoomId}:${message.index}:${message.timestamp}")
+      val put = new Put(s"${addMessagesRequest.chatRoomId}:${message.timestamp}")
       put.addColumn(columnFamilyName, indexColumnName, message.index)
       put.addColumn(columnFamilyName, timestampColumnName, message.timestamp)
       put.addColumn(columnFamilyName, authorColumnName, message.author.value)
