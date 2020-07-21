@@ -21,7 +21,7 @@ spec:
       hostname: hbase-k8s
       containers:
         - name: hbase-k8s
-          image: dajobe/hbase:latest
+          image: dajobe/hbase:latest # Cheating a bit here: the image's version of HBase is more recent than 1.26
           ports:
             - containerPort: 8080
               name: rest-api

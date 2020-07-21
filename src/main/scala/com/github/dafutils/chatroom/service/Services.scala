@@ -1,13 +1,18 @@
 package com.github.dafutils.chatroom.service
 
 import com.github.dafutils.chatroom.AkkaDependencies
-import com.github.dafutils.chatroom.hbase.Hbase
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.hbase.HBaseConfiguration
+import org.apache.hadoop.hbase.client.HBaseAdmin
 
-trait Services {  
-  this: AkkaDependencies with Hbase =>
+trait Services {
+  this: AkkaDependencies =>
 
-  val chatroomService = new ChatroomMessageRepository(
-    createChatroomSettings = createChatroomSettings,
-    messagesSettings = messagesSettings
-  )
+  val configuration: Configuration = {
+    val conf = HBaseConfiguration.create()
+    HBaseAdmin.checkHBaseAvailable(conf)
+    conf
+  }
+  
+  val chatroomService = new ChatroomMessageRepository(configuration = configuration)
 }
