@@ -18,34 +18,32 @@ trait HttpRoute {
     (path("health") & get) {
       complete(getClass.getPackage.getImplementationVersion)
     } ~
-      (pathPrefix("chatroom")
+      (path("chatroom")
         & logRequestResult("requests", InfoLevel)) {
 
         (post & entity(as[NewChatroom])) { newChatroom =>
           complete(
-            chatroomService.createChatroom(newChatroom)
+            chatroomMessageRepository.createChatroom(newChatroom)
+          )
+        }
+      } ~
+      path("messages") {
+        (post & entity(as[AddMessages])) { addedMessages =>
+          complete(
+            chatroomService.storeMessages(addedMessages)
           )
         } ~
-          pathPrefix(Segment) { chatroomName =>
-            path("messages") {
-              (post & entity(as[AddMessages])) { addedMessages =>
-                complete(
-                  chatroomService.addMessages(addedMessages)
-                )
-              } ~
-                (get & parameters("from".as[Long], "to".as[Long], "chatroomId".as[Int])) { (from, to, chatroom) =>
-                  //Request messages in a chatroom by period
-                  complete(
-                    chatroomService.scanMessages(chatroomId = chatroom, from = from, to = to)
-                  )
-                }
-            } ~
-              (path("longPauses")
-                & get
-                & parameters("from".as[Long], "to".as[Long])) { (from, to) =>
-                //Long pauses count
-                complete(Pauses(count = 73))
-              }
+          (get & parameters("from".as[Long], "to".as[Long], "chatroomId".as[Int])) { (from, to, chatroom) =>
+            //Request messages in a chatroom by period
+            complete(
+              chatroomMessageRepository.scanMessages(chatroomId = chatroom, from = from, to = to)
+            )
           }
+      } ~
+      (path("longPauses")
+        & get
+        & parameters("from".as[Long], "to".as[Long])) { (from, to) =>
+        //Long pauses count
+        complete(Pauses(count = 73))
       }
 }

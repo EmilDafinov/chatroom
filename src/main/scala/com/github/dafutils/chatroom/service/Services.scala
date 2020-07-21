@@ -15,5 +15,7 @@ trait Services {
     conf
   }
   
-  val chatroomService = new ChatroomMessageRepository(configuration = configuration)
+  val chatroomMessageRepository = new ChatroomMessageRepository(configuration = configuration)
+  
+  val chatroomService = new ChatroomService(chatroomMessageRepository)
 }

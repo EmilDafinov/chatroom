@@ -4,20 +4,19 @@ import akka.stream.Materializer
 import akka.stream.alpakka.hbase.HTableSettings
 import akka.stream.alpakka.hbase.scaladsl.HTableStage
 import akka.stream.scaladsl.Source
-import com.github.dafutils.chatroom.http.model.{AddMessages, ChatroomMessage, NewChatroom}
+import com.github.dafutils.chatroom.http.model.{AddMessages, BatchLastMessage, ChatroomMessage, NewChatroom}
 import com.github.dafutils.chatroom.service.hbase.HbaseImplicits._
-import com.github.dafutils.chatroom.service.hbase.families.{ChatroomsColumnFamily, MessagesColumnFamily}
+import com.github.dafutils.chatroom.service.hbase.families.{BatchLastMessageColumnMetricsFamily, ChatroomsColumnFamily, MessagesColumnFamily}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.TableName
 import org.apache.hadoop.hbase.client.{Mutation, Put, Scan}
-import org.apache.hadoop.hbase.util.Bytes
 import uk.gov.hmrc.emailaddress.EmailAddress
 
 import scala.collection.immutable.Seq
 
 class ChatroomMessageRepository(configuration: Configuration) {
 
-  val chatroomConverter: NewChatroom => Seq[Mutation] = { chatroom =>
+  private val chatroomConverter: NewChatroom => Seq[Mutation] = { chatroom =>
     import com.github.dafutils.chatroom.service.hbase.families.ChatroomsColumnFamily._
     val put = new Put(chatroom.name)
 
@@ -28,14 +27,14 @@ class ChatroomMessageRepository(configuration: Configuration) {
     List(put)
   }
 
-  val createChatroomSettings: HTableSettings[NewChatroom] = HTableSettings(
+  private val createChatroomSettings: HTableSettings[NewChatroom] = HTableSettings(
     conf = configuration,
     tableName = TableName.valueOf("chatrooms"),
     columnFamilies = Seq(ChatroomsColumnFamily.columnFamilyName),
     converter = chatroomConverter
   )
-  
-  val messagesConverter: AddMessages => Seq[Mutation] = { addMessagesRequest =>
+
+  private val messagesConverter: AddMessages => Seq[Mutation] = { addMessagesRequest =>
 
     addMessagesRequest.messages.map { message =>
       import MessagesColumnFamily._
@@ -47,14 +46,30 @@ class ChatroomMessageRepository(configuration: Configuration) {
       put
     }
   }
-  
-  val messagesSettings: HTableSettings[AddMessages] = HTableSettings(
+
+  private val messagesSettings: HTableSettings[AddMessages] = HTableSettings(
     conf = configuration,
     tableName = TableName.valueOf("messages"),
     columnFamilies = Seq(MessagesColumnFamily.columnFamilyName),
     converter = messagesConverter
   )
-  
+
+  private val batchLastMessageConverter: BatchLastMessage => Seq[Mutation] = { batchLastMessage =>
+    import BatchLastMessageColumnMetricsFamily._
+
+    val put = new Put(s"${batchLastMessage.chatroomId}:${batchLastMessage.lastMessageIndex}")
+    put.addColumn(columnFamilyName, lastMessageTimestamp, batchLastMessage.lastMessageTimestamp)
+
+    List(put)
+  }
+
+  private val batchLastMessageTimestampSettings: HTableSettings[BatchLastMessage] = HTableSettings(
+    conf = configuration,
+    tableName = TableName.valueOf("batch_last_messages"),
+    columnFamilies = Seq(BatchLastMessageColumnMetricsFamily.columnFamilyName),
+    converter = batchLastMessageConverter
+  )
+
   def createChatroom(chatroom: NewChatroom)(implicit mat: Materializer) = {
     Source
       .single(chatroom)
@@ -67,16 +82,22 @@ class ChatroomMessageRepository(configuration: Configuration) {
       .via(HTableStage.flow(messagesSettings))
   }
 
+  def storeBatchLastMessage(batchLastMessage: BatchLastMessage)(implicit mat: Materializer) = {
+    Source
+      .single(batchLastMessage)
+      .via(HTableStage.flow(batchLastMessageTimestampSettings))
+  }
+
   def scanMessages(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer) = {
     import MessagesColumnFamily._
     HTableStage
       .source(new Scan(s"$chatroomId:$from", s"$chatroomId:$to"), messagesSettings)
       .map { result =>
         ChatroomMessage(
-          index = Bytes.toInt(result.getValue(columnFamilyName, indexColumnName)),
-          timestamp = Bytes.toLong(result.getValue(columnFamilyName, timestampColumnName)),
-          author = EmailAddress(Bytes.toString(result.getValue(columnFamilyName, authorColumnName))),
-          message = Bytes.toString(result.getValue(columnFamilyName, messageContentColumnName))
+          index = result.getValue(columnFamilyName, indexColumnName),
+          timestamp = result.getValue(columnFamilyName, timestampColumnName),
+          author = EmailAddress(result.getValue(columnFamilyName, authorColumnName)),
+          message = result.getValue(columnFamilyName, messageContentColumnName)
         )
       }
   }
