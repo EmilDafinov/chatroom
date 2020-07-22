@@ -8,3 +8,9 @@ case class ChatroomMessage(
   author: EmailAddress,
   message: String                        
 )
+
+case class ChatroomMessageWithStats(
+  chatroomId: Int,
+  previousMessageTimestamp: Long,                                 
+  message: ChatroomMessage,
+)
