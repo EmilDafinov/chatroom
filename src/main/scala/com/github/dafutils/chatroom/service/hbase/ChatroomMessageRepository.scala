@@ -7,10 +7,10 @@ import akka.stream.alpakka.hbase.scaladsl.HTableStage
 import akka.stream.scaladsl.{Flow, Source}
 import com.github.dafutils.chatroom.http.model.{ChatroomMessage, ChatroomMessageWithStats, NewChatroom}
 import com.github.dafutils.chatroom.service.hbase.HbaseImplicits._
-import com.github.dafutils.chatroom.service.hbase.families.{ChatroomsColumnFamily, MessagesColumnFamily}
+import com.github.dafutils.chatroom.service.hbase.families.{ChatroomMetricsColumnFamily, ChatroomsColumnFamily, MessagesColumnFamily}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.TableName
-import org.apache.hadoop.hbase.client.{Mutation, Put, Scan}
+import org.apache.hadoop.hbase.client.{Increment, Mutation, Put, Scan}
 import uk.gov.hmrc.emailaddress.EmailAddress
 
 import scala.collection.immutable.Seq
@@ -19,7 +19,8 @@ class ChatroomMessageRepository(configuration: Configuration) {
 
   private val chatroomConverter: NewChatroom => Seq[Mutation] = { chatroom =>
     import ChatroomsColumnFamily._
-    val put = new Put(chatroom.name)
+    //TODO: Better row key, that one creates a hotspot on chatroom creations
+    val put = new Put(chatroom.id)
 
     put.addColumn(columnFamilyName, idColumnName, chatroom.id)
     put.addColumn(columnFamilyName, nameColumnName, chatroom.name)
@@ -28,6 +29,26 @@ class ChatroomMessageRepository(configuration: Configuration) {
     List(put)
   }
 
+  private val chatroomStatsConverter: ChatroomMessageWithStats => Seq[Mutation] = { message => 
+    import com.github.dafutils.chatroom.service.hbase.families.ChatroomMetricsColumnFamily._
+    
+    //TODO: See about a better rowkey above
+    //TODO: should we do this in bulk?
+    val increment = new Increment(message.chatroomId)
+    val pauseCountIncrementValue = if(message.message.index > 1) 1 else 0
+    val totalPauseTimeIncrementValue = if(message.message.index > 1) message.message.timestamp - message.previousMessageTimestamp else 0
+    increment.addColumn(columnFamilyName, totalPausesCount, pauseCountIncrementValue)
+    increment.addColumn(columnFamilyName, totalPausesDuration, totalPauseTimeIncrementValue)
+    List(increment)
+  }
+
+  private val chatroomMetricsSettings: HTableSettings[ChatroomMessageWithStats] = HTableSettings(
+    conf = configuration,
+    tableName = TableName.valueOf("chatrooms"),
+    columnFamilies = Seq(ChatroomMetricsColumnFamily.columnFamilyName),
+    converter = chatroomStatsConverter
+  )
+  
   private val createChatroomSettings: HTableSettings[NewChatroom] = HTableSettings(
     conf = configuration,
     tableName = TableName.valueOf("chatrooms"),
@@ -46,8 +67,7 @@ class ChatroomMessageRepository(configuration: Configuration) {
     put.addColumn(contentColumnFamily, timestampColumnName, message.message.timestamp)
     put.addColumn(contentColumnFamily, authorColumnName, message.message.author.value)
     put.addColumn(contentColumnFamily, messageContentColumnName, message.message.message) // Tipping my hat to Joseph Heller ;)
-
-
+    
     put.addColumn(metricsColumnFamily, previousMessageTimestampColumnName, message.previousMessageTimestamp)
     List(put)
   }
@@ -68,6 +88,11 @@ class ChatroomMessageRepository(configuration: Configuration) {
   def persistMessages(implicit mat: Materializer) = {
     Flow[ChatroomMessageWithStats]
       .via(HTableStage.flow(messagesSettings))
+  }
+  
+  def updateChatroomMetrics(implicit mat: Materializer) = {
+    Flow[ChatroomMessageWithStats]
+      .via(HTableStage.flow(chatroomMetricsSettings))
   }
 
   def timestampOfPreviousMessageInChatroom(chatroomId: Int, messageIndex: Int, messageTimestamp: Long)(implicit mat: Materializer): Source[Long, NotUsed] = {

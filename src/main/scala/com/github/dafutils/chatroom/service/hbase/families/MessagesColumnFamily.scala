@@ -12,6 +12,7 @@ object MessagesColumnFamily {
   val messageContentColumnName = "message"
   val previousMessageTimestampColumnName = "previous_message_timestamp"
 
+  //left as string for ease if reading
   def rowKey(chatroomId: Int, messageTimestamp: Long): Array[Byte] = s"${chatroomId}:${messageTimestamp}"
   
 }

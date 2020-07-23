@@ -11,15 +11,13 @@ import scala.concurrent.ExecutionContext
 
 class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
 
-  //Assuming the indices of the chatroom messages start with 1
-  val indexOfFirstMessageInChatroom = 1
-
   def storeMessages(addMessagesRequest: AddMessages)(implicit mat: Materializer, ec: ExecutionContext) = {
     toMessagesWithStats(
       chatRoomId = addMessagesRequest.chatRoomId,
       messages = addMessagesRequest.messages
     )
       .via(chatroomMessageRepository.persistMessages)
+      .via(chatroomMessageRepository.updateChatroomMetrics)
   }
 
   //TODO: extract and test
