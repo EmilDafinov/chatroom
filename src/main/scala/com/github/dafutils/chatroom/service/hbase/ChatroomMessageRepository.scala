@@ -5,12 +5,12 @@ import akka.stream.Materializer
 import akka.stream.alpakka.hbase.HTableSettings
 import akka.stream.alpakka.hbase.scaladsl.HTableStage
 import akka.stream.scaladsl.Source
-import com.github.dafutils.chatroom.http.model.{BatchLastMessage, ChatroomMessage, ChatroomMessageWithStats, NewChatroom}
+import com.github.dafutils.chatroom.http.model.{ChatroomMessage, ChatroomMessageWithStats, NewChatroom}
 import com.github.dafutils.chatroom.service.hbase.HbaseImplicits._
 import com.github.dafutils.chatroom.service.hbase.families.{ChatroomsColumnFamily, MessagesColumnFamily}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.TableName
-import org.apache.hadoop.hbase.client.{Get, Mutation, Put, Scan}
+import org.apache.hadoop.hbase.client.{Mutation, Put, Scan}
 import uk.gov.hmrc.emailaddress.EmailAddress
 
 import scala.collection.immutable.Seq
@@ -39,8 +39,8 @@ class ChatroomMessageRepository(configuration: Configuration) {
 
     import MessagesColumnFamily._
 
-    val put = new Put(s"${message.chatroomId}:${message.message.timestamp}")
-    
+    val put = new Put(rowKey(message.chatroomId, message.message.timestamp))
+
     put.addColumn(contentColumnFamily, chatroomIdColumnName, message.chatroomId)
     put.addColumn(contentColumnFamily, indexColumnName, message.message.index)
     put.addColumn(contentColumnFamily, timestampColumnName, message.message.timestamp)
@@ -73,26 +73,35 @@ class ChatroomMessageRepository(configuration: Configuration) {
 
   def timestampOfPreviousMessageInChatroom(chatroomId: Int, messageIndex: Int, messageTimestamp: Long)(implicit mat: Materializer): Source[Long, NotUsed] = {
     import MessagesColumnFamily._
-    
-    val previousMessageScan = new Scan(s"${chatroomId}:${messageTimestamp}")
+
+    require(messageIndex >= 1, "The indices of messages in a chatroom start from 1.")
+
+    val previousMessageScan = new Scan(rowKey(chatroomId, messageTimestamp))
     previousMessageScan.setReversed(true)
     previousMessageScan.setMaxResultSize(1)
-    
-    HTableStage
-      .source(previousMessageScan, messagesSettings)
-      .map { result =>
-        
-        val previousMessageTimestamp: Long = result.getValue(contentColumnFamily, timestampColumnName)
-        val previousMessageIndex: Int = result.getValue(contentColumnFamily, indexColumnName)
-        val previousMessageChatroomId: Int = result.getValue(contentColumnFamily, chatroomIdColumnName)
 
-        (previousMessageChatroomId, previousMessageIndex , previousMessageTimestamp)
-      }
-      .filter { case (previousMessageChatroomId, previousMessageIndex , _) =>
-        previousMessageChatroomId == chatroomId && previousMessageIndex == messageIndex - 1    
-      }
-      .map(_._3)
+    messageIndex match {
+      case 1 =>
+        Source.single(-1)
+      case index if index > 1 =>
+        HTableStage
+          .source(previousMessageScan, messagesSettings)
+          .map { result =>
+
+            val previousMessageTimestamp: Long = result.getValue(contentColumnFamily, timestampColumnName)
+            val previousMessageIndex: Int = result.getValue(contentColumnFamily, indexColumnName)
+            val previousMessageChatroomId: Int = result.getValue(contentColumnFamily, chatroomIdColumnName)
+
+            (previousMessageChatroomId, previousMessageIndex, previousMessageTimestamp)
+          }
+          .filter { case (previousMessageChatroomId, previousMessageIndex, _) =>
+            //Make sure that what we got is indeed the previous message in the chatroom (by index)
+            previousMessageChatroomId == chatroomId && previousMessageIndex == messageIndex - 1
+          }
+          .map(_._3)
+    }
   }
+
 
   def scanMessages(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer) = {
     import MessagesColumnFamily._

@@ -1,4 +1,5 @@
 package com.github.dafutils.chatroom.service.hbase.families
+import com.github.dafutils.chatroom.service.hbase.HbaseImplicits._
 
 object MessagesColumnFamily {
   val contentColumnFamily = "content"
@@ -10,4 +11,7 @@ object MessagesColumnFamily {
   val authorColumnName = "author"
   val messageContentColumnName = "message"
   val previousMessageTimestampColumnName = "previous_message_timestamp"
+
+  def rowKey(chatroomId: Int, messageTimestamp: Long): Array[Byte] = s"${chatroomId}:${messageTimestamp}"
+  
 }
