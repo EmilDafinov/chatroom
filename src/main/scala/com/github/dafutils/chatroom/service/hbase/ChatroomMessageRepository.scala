@@ -4,7 +4,7 @@ import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.alpakka.hbase.HTableSettings
 import akka.stream.alpakka.hbase.scaladsl.HTableStage
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Flow, Source}
 import com.github.dafutils.chatroom.http.model.{ChatroomMessage, ChatroomMessageWithStats, NewChatroom}
 import com.github.dafutils.chatroom.service.hbase.HbaseImplicits._
 import com.github.dafutils.chatroom.service.hbase.families.{ChatroomsColumnFamily, MessagesColumnFamily}
@@ -18,7 +18,7 @@ import scala.collection.immutable.Seq
 class ChatroomMessageRepository(configuration: Configuration) {
 
   private val chatroomConverter: NewChatroom => Seq[Mutation] = { chatroom =>
-    import com.github.dafutils.chatroom.service.hbase.families.ChatroomsColumnFamily._
+    import ChatroomsColumnFamily._
     val put = new Put(chatroom.name)
 
     put.addColumn(columnFamilyName, idColumnName, chatroom.id)
@@ -65,16 +65,15 @@ class ChatroomMessageRepository(configuration: Configuration) {
       .via(HTableStage.flow(createChatroomSettings))
   }
 
-  def addMessages(addMessagesRequest: Seq[ChatroomMessageWithStats])(implicit mat: Materializer) = {
-    Source
-      .fromIterator(() => addMessagesRequest.iterator)
+  def persistMessages(implicit mat: Materializer) = {
+    Flow[ChatroomMessageWithStats]
       .via(HTableStage.flow(messagesSettings))
   }
 
   def timestampOfPreviousMessageInChatroom(chatroomId: Int, messageIndex: Int, messageTimestamp: Long)(implicit mat: Materializer): Source[Long, NotUsed] = {
     import MessagesColumnFamily._
 
-    require(messageIndex >= 1, "The indices of messages in a chatroom start from 1.")
+     require(messageIndex >= 1, s"Attempted to get the previous message time for message with index $messageIndex in $chatroomId.")
 
     val previousMessageScan = new Scan(rowKey(chatroomId, messageTimestamp))
     previousMessageScan.setReversed(true)
@@ -101,7 +100,6 @@ class ChatroomMessageRepository(configuration: Configuration) {
           .map(_._3)
     }
   }
-
 
   def scanMessages(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer) = {
     import MessagesColumnFamily._
