@@ -7,7 +7,9 @@ import akka.stream.alpakka.hbase.scaladsl.HTableStage
 import akka.stream.scaladsl.{Flow, Source}
 import com.github.dafutils.chatroom.http.model.{ChatroomMessage, ChatroomMessageWithStats, NewChatroom}
 import com.github.dafutils.chatroom.service.hbase.HbaseImplicits._
-import com.github.dafutils.chatroom.service.hbase.families.{ChatroomMetricsColumnFamily, ChatroomsColumnFamily, MessagesColumnFamily}
+import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable.{chatroomContentColumnFamilyName, chatroomMetricsColumnFamilyName}
+import com.github.dafutils.chatroom.service.hbase.families.{ChatroomsTable, MessagesTable}
+import com.github.dafutils.chatroom.service.hbase.families.MessagesTable.{authorColumnName, chatroomIdColumnName, indexColumnName, messageContentColumnName, messagesContentColumnFamily, messagesMetricsColumnFamily, previousMessageTimestampColumnName, timestampColumnName}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.TableName
 import org.apache.hadoop.hbase.client.{Increment, Mutation, Put, Scan}
@@ -15,67 +17,68 @@ import uk.gov.hmrc.emailaddress.EmailAddress
 
 import scala.collection.immutable.Seq
 
-class ChatroomMessageRepository(configuration: Configuration) {
+class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
   private val chatroomConverter: NewChatroom => Seq[Mutation] = { chatroom =>
-    import ChatroomsColumnFamily._
-    //TODO: Better row key, that one creates a hotspot on chatroom creations
-    val put = new Put(chatroom.id)
+    import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable._
 
-    put.addColumn(columnFamilyName, idColumnName, chatroom.id)
-    put.addColumn(columnFamilyName, nameColumnName, chatroom.name)
-    put.addColumn(columnFamilyName, createdColumnName, chatroom.created)
-    put.addColumn(columnFamilyName, participantsColumnName, chatroom.participants.mkString(","))
+    val put = new Put(rowKey(chatroom.id, modBy))
+
+    put.addColumn(chatroomContentColumnFamilyName, idColumnName, chatroom.id)
+    put.addColumn(chatroomContentColumnFamilyName, nameColumnName, chatroom.name)
+    put.addColumn(chatroomContentColumnFamilyName, createdColumnName, chatroom.created)
+    put.addColumn(chatroomContentColumnFamilyName, participantsColumnName, chatroom.participants.mkString(","))
+
     List(put)
   }
 
-  private val chatroomStatsConverter: ChatroomMessageWithStats => Seq[Mutation] = { message => 
-    import com.github.dafutils.chatroom.service.hbase.families.ChatroomMetricsColumnFamily._
-    
-    //TODO: See about a better rowkey above
-    //TODO: should we do this in bulk?
-    val increment = new Increment(message.chatroomId)
-    val pauseCountIncrementValue = if(message.message.index > 1) 1 else 0
-    val totalPauseTimeIncrementValue = if(message.message.index > 1) message.message.timestamp - message.previousMessageTimestamp else 0
-    increment.addColumn(columnFamilyName, totalPausesCount, pauseCountIncrementValue)
-    increment.addColumn(columnFamilyName, totalPausesDuration, totalPauseTimeIncrementValue)
+  private val chatroomStatsConverter: ChatroomMessageWithStats => Seq[Mutation] = { message =>
+    import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable._
+
+    val increment = new Increment(rowKey(message.chatroomId, modBy))
+    val pauseCountIncrementValue = if (message.message.index > 1) 1 else 0
+    val totalPauseTimeIncrementValue = if (message.message.index > 1) message.message.timestamp - message.previousMessageTimestamp else 0
+
+    increment.addColumn(chatroomMetricsColumnFamilyName, totalPausesCountColumnName, pauseCountIncrementValue)
+    increment.addColumn(chatroomMetricsColumnFamilyName, totalPausesDurationColumnName, totalPauseTimeIncrementValue)
+
     List(increment)
   }
 
   private val chatroomMetricsSettings: HTableSettings[ChatroomMessageWithStats] = HTableSettings(
+
     conf = configuration,
-    tableName = TableName.valueOf("chatrooms"),
-    columnFamilies = Seq(ChatroomMetricsColumnFamily.columnFamilyName),
+    tableName = TableName.valueOf(ChatroomsTable.tableName),
+    columnFamilies = Seq(chatroomContentColumnFamilyName, chatroomMetricsColumnFamilyName),
     converter = chatroomStatsConverter
   )
-  
+
   private val createChatroomSettings: HTableSettings[NewChatroom] = HTableSettings(
     conf = configuration,
-    tableName = TableName.valueOf("chatrooms"),
-    columnFamilies = Seq(ChatroomsColumnFamily.columnFamilyName),
+    tableName = TableName.valueOf(ChatroomsTable.tableName),
+    columnFamilies = Seq(chatroomContentColumnFamilyName, chatroomMetricsColumnFamilyName),
     converter = chatroomConverter
   )
 
   private val messagesConverter: ChatroomMessageWithStats => Seq[Mutation] = { message =>
 
-    import MessagesColumnFamily._
+    val put = new Put(MessagesTable.rowKey(message.chatroomId, message.message.timestamp))
 
-    val put = new Put(rowKey(message.chatroomId, message.message.timestamp))
+    put.addColumn(messagesContentColumnFamily, chatroomIdColumnName, message.chatroomId)
+    put.addColumn(messagesContentColumnFamily, indexColumnName, message.message.index)
+    put.addColumn(messagesContentColumnFamily, timestampColumnName, message.message.timestamp)
+    put.addColumn(messagesContentColumnFamily, authorColumnName, message.message.author.value)
+    put.addColumn(messagesContentColumnFamily, messageContentColumnName, message.message.message) // Tipping my hat to Joseph Heller ;)
 
-    put.addColumn(contentColumnFamily, chatroomIdColumnName, message.chatroomId)
-    put.addColumn(contentColumnFamily, indexColumnName, message.message.index)
-    put.addColumn(contentColumnFamily, timestampColumnName, message.message.timestamp)
-    put.addColumn(contentColumnFamily, authorColumnName, message.message.author.value)
-    put.addColumn(contentColumnFamily, messageContentColumnName, message.message.message) // Tipping my hat to Joseph Heller ;)
-    
-    put.addColumn(metricsColumnFamily, previousMessageTimestampColumnName, message.previousMessageTimestamp)
+    put.addColumn(messagesMetricsColumnFamily, previousMessageTimestampColumnName, message.previousMessageTimestamp)
+
     List(put)
   }
 
   private val messagesSettings: HTableSettings[ChatroomMessageWithStats] = HTableSettings(
     conf = configuration,
-    tableName = TableName.valueOf("messages"),
-    columnFamilies = Seq(MessagesColumnFamily.contentColumnFamily, MessagesColumnFamily.metricsColumnFamily),
+    tableName = TableName.valueOf(MessagesTable.tableName),
+    columnFamilies = Seq(messagesContentColumnFamily, messagesMetricsColumnFamily),
     converter = messagesConverter
   )
 
@@ -89,18 +92,17 @@ class ChatroomMessageRepository(configuration: Configuration) {
     Flow[ChatroomMessageWithStats]
       .via(HTableStage.flow(messagesSettings))
   }
-  
+
   def updateChatroomMetrics(implicit mat: Materializer) = {
     Flow[ChatroomMessageWithStats]
       .via(HTableStage.flow(chatroomMetricsSettings))
   }
 
   def timestampOfPreviousMessageInChatroom(chatroomId: Int, messageIndex: Int, messageTimestamp: Long)(implicit mat: Materializer): Source[Long, NotUsed] = {
-    import MessagesColumnFamily._
 
-     require(messageIndex >= 1, s"Attempted to get the previous message time for message with index $messageIndex in $chatroomId.")
+    require(messageIndex >= 1, s"Attempted to get the previous message time for message with index $messageIndex in $chatroomId.")
 
-    val previousMessageScan = new Scan(rowKey(chatroomId, messageTimestamp))
+    val previousMessageScan = new Scan(MessagesTable.rowKey(chatroomId, messageTimestamp))
     previousMessageScan.setReversed(true)
     previousMessageScan.setMaxResultSize(1)
 
@@ -112,9 +114,9 @@ class ChatroomMessageRepository(configuration: Configuration) {
           .source(previousMessageScan, messagesSettings)
           .map { result =>
 
-            val previousMessageTimestamp: Long = result.getValue(contentColumnFamily, timestampColumnName)
-            val previousMessageIndex: Int = result.getValue(contentColumnFamily, indexColumnName)
-            val previousMessageChatroomId: Int = result.getValue(contentColumnFamily, chatroomIdColumnName)
+            val previousMessageTimestamp: Long = result.getValue(messagesContentColumnFamily, timestampColumnName)
+            val previousMessageIndex: Int = result.getValue(messagesContentColumnFamily, indexColumnName)
+            val previousMessageChatroomId: Int = result.getValue(messagesContentColumnFamily, chatroomIdColumnName)
 
             (previousMessageChatroomId, previousMessageIndex, previousMessageTimestamp)
           }
@@ -127,16 +129,16 @@ class ChatroomMessageRepository(configuration: Configuration) {
   }
 
   def scanMessages(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer): Source[ChatroomMessage, NotUsed] = {
-    import MessagesColumnFamily._
-    val scan = new Scan(s"$chatroomId:$from", s"$chatroomId:$to")
+    
+    val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
     HTableStage
       .source(scan, messagesSettings)
       .map { result =>
         ChatroomMessage(
-          index = result.getValue(contentColumnFamily, indexColumnName),
-          timestamp = result.getValue(contentColumnFamily, timestampColumnName),
-          author = EmailAddress(result.getValue(contentColumnFamily, authorColumnName)),
-          message = result.getValue(contentColumnFamily, messageContentColumnName)
+          index = result.getValue(messagesContentColumnFamily, indexColumnName),
+          timestamp = result.getValue(messagesContentColumnFamily, timestampColumnName),
+          author = EmailAddress(result.getValue(messagesContentColumnFamily, authorColumnName)),
+          message = result.getValue(messagesContentColumnFamily, messageContentColumnName)
         )
       }
   }

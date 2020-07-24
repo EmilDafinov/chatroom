@@ -42,7 +42,7 @@ trait HttpRoute {
         path("messages") {
           (post & entity(as[AddMessages])) { addedMessages =>
             complete(
-              chatroomService.storeMessages(addedMessages)
+              chatroomRepository.storeMessages(addedMessages)
             )
           } ~
             (get & parameters("from".as[Long], "to".as[Long], "chatroomId".as[Int])) { (from, to, chatroom) =>

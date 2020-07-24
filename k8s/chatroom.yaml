@@ -88,3 +88,4 @@ metadata:
 
 data:
   application.conf: |-
+    mod.by = 10
