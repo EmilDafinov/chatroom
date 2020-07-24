@@ -126,7 +126,7 @@ class ChatroomMessageRepository(configuration: Configuration) {
     }
   }
 
-  def scanMessages(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer) = {
+  def scanMessages(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer): Source[ChatroomMessage, NotUsed] = {
     import MessagesColumnFamily._
     val scan = new Scan(s"$chatroomId:$from", s"$chatroomId:$to")
     HTableStage
