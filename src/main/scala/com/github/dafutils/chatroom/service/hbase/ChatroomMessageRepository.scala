@@ -136,8 +136,8 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     }
   }
 
-  def scanMessages(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer): Source[ChatroomMessageWithStats, NotUsed] = {
-
+  def chatroomMessagesInPeriod(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer): Source[ChatroomMessageWithStats, NotUsed] = {
+    
     val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
     HTableStage
       .source(scan, messagesSettings)
@@ -167,7 +167,7 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
   }
 
   def countLongPauses(chatroomId: Int, from: Long, to: Long, averagePauseTime: Double)(implicit mat: Materializer) = {
-    //TODO: large periods...
+    //TODO: large periods...will this attempt to load everything into memory?
     val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
     scan.setFilter(new SingleColumnValueFilter(messagesMetricsColumnFamily, timeSincePreviousMessage, CompareOp.GREATER, averagePauseTime))
     

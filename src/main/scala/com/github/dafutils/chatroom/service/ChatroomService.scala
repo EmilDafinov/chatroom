@@ -15,7 +15,7 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
     val sortedMessages = addMessagesRequest.messages.sortBy(_.index)
 
     for {
-      knownMessages <- chatroomMessageRepository.scanMessages(
+      knownMessages <- chatroomMessageRepository.chatroomMessagesInPeriod(
         chatroomId = addMessagesRequest.chatRoomId,
         from = sortedMessages.head.timestamp,
         to = sortedMessages.last.timestamp + 1 //include the last message

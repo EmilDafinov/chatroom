@@ -28,6 +28,7 @@ trait HttpRoute {
   val route: Route =
     handleExceptions(exceptionHandler) {
       (path("health") & get) {
+        //Kubernetes requirement
         complete(getClass.getPackage.getImplementationVersion)
       } ~
         (path("chatroom")
@@ -46,15 +47,20 @@ trait HttpRoute {
             )
           } ~
             (get & parameters("from".as[Long], "to".as[Long], "chatroomId".as[Int])) { (from, to, chatroom) =>
-              //Request messages in a chatroom by period
+              //TODO: Perhaps there should be a limit enforced on the lentgh of the period that can be requested?
+              //      Since we are returning the result, we will most likely have to load all messages into memory.
+              //      Unless we do some streaming HTTP trickery...
               complete(
-                chatroomMessageRepository.scanMessages(chatroomId = chatroom, from = from, to = to)
+                chatroomMessageRepository.chatroomMessagesInPeriod(chatroomId = chatroom, from = from, to = to)
               )
             }
         } ~
         (path("longPauses")
           & get
           & parameters("from".as[Long], "to".as[Long], "chatroomId".as[Int])) { (from, to, chatroom) =>
+          //TODO: Same concern about limiting the period: not from a memory point of view as above, but because of 
+          //      execution time: we have to scan the entire period to count all pauses that are longer than the 
+          //      average
           complete(
             pausesService.countLongPauses(chatroom, from, to).map(Pauses.apply)
           )
