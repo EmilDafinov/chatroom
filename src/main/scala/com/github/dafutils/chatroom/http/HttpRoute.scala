@@ -54,9 +54,10 @@ trait HttpRoute {
         } ~
         (path("longPauses")
           & get
-          & parameters("from".as[Long], "to".as[Long])) { (from, to) =>
-          //Long pauses count
-          complete(Pauses(count = 73))
+          & parameters("from".as[Long], "to".as[Long], "chatroomId".as[Int])) { (from, to, chatroom) =>
+          complete(
+            pausesService.countLongPauses(chatroom, from, to).map(Pauses.apply)
+          )
         }
     }
 }

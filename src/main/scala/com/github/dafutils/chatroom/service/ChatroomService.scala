@@ -23,7 +23,7 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
       
       messagesPersistedForThisRequest <- toMessagesWithStats(
         chatRoomId = addMessagesRequest.chatRoomId,
-        messagesFromBatchAlreadyPersisted = knownMessages,
+        messagesFromBatchAlreadyPersisted = knownMessages.map(_.message),
         sortedMessagesInBatch = sortedMessages
       )
         .via(chatroomMessageRepository.persistMessages)
@@ -51,7 +51,7 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
         .map { timestampOfLastMessageOfPreviousBatch =>
           ChatroomMessageWithStats(
             chatroomId = chatRoomId,
-            previousMessageTimestamp = timestampOfLastMessageOfPreviousBatch,
+            timeSincePreviousMessage = timestampOfLastMessageOfPreviousBatch,
             message = sortedMessagesInBatch.head
           )
         }
@@ -65,7 +65,7 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
 
         ChatroomMessageWithStats(
           chatroomId = chatRoomId,
-          previousMessageTimestamp = previousMessage.timestamp,
+          timeSincePreviousMessage = previousMessage.timestamp,
           message = nonPersistedMessage
         )
       }

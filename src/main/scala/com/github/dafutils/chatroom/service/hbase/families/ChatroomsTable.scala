@@ -31,7 +31,7 @@ object MessagesTable {
   val timestampColumnName = "timestamp"
   val authorColumnName = "author"
   val messageContentColumnName = "message"
-  val previousMessageTimestampColumnName = "previous_message_timestamp"
+  val timeSincePreviousMessage = "pause_since_previous_message"
 
   //left as string for ease if reading
   def rowKey(chatroomId: Int, messageTimestamp: Long): Array[Byte] = s"${chatroomId}:${messageTimestamp}"

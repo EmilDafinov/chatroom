@@ -24,4 +24,6 @@ trait Services {
   )
   
   val chatroomRepository = new ChatroomService(chatroomMessageRepository = chatroomMessageRepository)
+  
+  val pausesService = new PausesService(chatroomMessageRepository = chatroomMessageRepository)
 }

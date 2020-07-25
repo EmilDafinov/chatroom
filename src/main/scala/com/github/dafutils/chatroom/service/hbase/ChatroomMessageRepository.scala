@@ -4,18 +4,21 @@ import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.alpakka.hbase.HTableSettings
 import akka.stream.alpakka.hbase.scaladsl.HTableStage
-import akka.stream.scaladsl.{Flow, Source}
+import akka.stream.scaladsl.{Flow, Sink, Source}
 import com.github.dafutils.chatroom.http.model.{ChatroomMessage, ChatroomMessageWithStats, NewChatroom}
 import com.github.dafutils.chatroom.service.hbase.HbaseImplicits._
-import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable.{chatroomContentColumnFamilyName, chatroomMetricsColumnFamilyName}
+import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable.{chatroomContentColumnFamilyName, chatroomMetricsColumnFamilyName, totalPausesCountColumnName, totalPausesDurationColumnName}
+import com.github.dafutils.chatroom.service.hbase.families.MessagesTable._
 import com.github.dafutils.chatroom.service.hbase.families.{ChatroomsTable, MessagesTable}
-import com.github.dafutils.chatroom.service.hbase.families.MessagesTable.{authorColumnName, chatroomIdColumnName, indexColumnName, messageContentColumnName, messagesContentColumnFamily, messagesMetricsColumnFamily, previousMessageTimestampColumnName, timestampColumnName}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.TableName
-import org.apache.hadoop.hbase.client.{Increment, Mutation, Put, Scan}
+import org.apache.hadoop.hbase.client._
+import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
+import org.apache.hadoop.hbase.filter.SingleColumnValueFilter
 import uk.gov.hmrc.emailaddress.EmailAddress
 
 import scala.collection.immutable.Seq
+import scala.concurrent.ExecutionContext
 
 class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
@@ -36,8 +39,8 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable._
 
     val increment = new Increment(rowKey(message.chatroomId, modBy))
-    val pauseCountIncrementValue = if (message.message.index > 1) 1 else 0
-    val totalPauseTimeIncrementValue = if (message.message.index > 1) message.message.timestamp - message.previousMessageTimestamp else 0
+    val pauseCountIncrementValue: Long = if (message.message.index > 1) 1 else 0
+    val totalPauseTimeIncrementValue: Long = if (message.message.index > 1) message.message.timestamp - message.timeSincePreviousMessage else 0
 
     increment.addColumn(chatroomMetricsColumnFamilyName, totalPausesCountColumnName, pauseCountIncrementValue)
     increment.addColumn(chatroomMetricsColumnFamilyName, totalPausesDurationColumnName, totalPauseTimeIncrementValue)
@@ -70,7 +73,12 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     put.addColumn(messagesContentColumnFamily, authorColumnName, message.message.author.value)
     put.addColumn(messagesContentColumnFamily, messageContentColumnName, message.message.message) // Tipping my hat to Joseph Heller ;)
 
-    put.addColumn(messagesMetricsColumnFamily, previousMessageTimestampColumnName, message.previousMessageTimestamp)
+    val pauseSincePreviousMessage: Long = if (message.timeSincePreviousMessage == -1) {
+      -1
+    } else {
+      message.message.timestamp - message.timeSincePreviousMessage
+    }
+    put.addColumn(messagesMetricsColumnFamily, timeSincePreviousMessage, pauseSincePreviousMessage)
 
     List(put)
   }
@@ -128,18 +136,43 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     }
   }
 
-  def scanMessages(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer): Source[ChatroomMessage, NotUsed] = {
-    
+  def scanMessages(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer): Source[ChatroomMessageWithStats, NotUsed] = {
+
     val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
     HTableStage
       .source(scan, messagesSettings)
       .map { result =>
-        ChatroomMessage(
-          index = result.getValue(messagesContentColumnFamily, indexColumnName),
-          timestamp = result.getValue(messagesContentColumnFamily, timestampColumnName),
-          author = EmailAddress(result.getValue(messagesContentColumnFamily, authorColumnName)),
-          message = result.getValue(messagesContentColumnFamily, messageContentColumnName)
+        ChatroomMessageWithStats(
+          chatroomId = result.getValue(messagesContentColumnFamily, chatroomIdColumnName),
+          timeSincePreviousMessage = result.getValue(messagesMetricsColumnFamily, timeSincePreviousMessage),
+          message = ChatroomMessage(
+            index = result.getValue(messagesContentColumnFamily, indexColumnName),
+            timestamp = result.getValue(messagesContentColumnFamily, timestampColumnName),
+            author = EmailAddress(result.getValue(messagesContentColumnFamily, authorColumnName)),
+            message = result.getValue(messagesContentColumnFamily, messageContentColumnName)
+          )
         )
       }
+  }
+
+  def averagePause(chatroomId: Int)(implicit mat: Materializer, ec: ExecutionContext) = {
+    HTableStage
+      .source(new Scan(new Get(ChatroomsTable.rowKey(chatroomId, modBy))), chatroomMetricsSettings)
+      .map { result =>
+        val totalPauseTime: Long = result.getValue(chatroomMetricsColumnFamilyName, totalPausesDurationColumnName)
+        val totalPauseCount: Long = result.getValue(chatroomMetricsColumnFamilyName, totalPausesCountColumnName)
+        totalPauseTime.toDouble / totalPauseCount.toDouble
+      }
+      .runWith(Sink.headOption).map(_.getOrElse(Double.MaxValue))
+  }
+
+  def countLongPauses(chatroomId: Int, from: Long, to: Long, averagePauseTime: Double)(implicit mat: Materializer) = {
+    //TODO: large periods...
+    val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
+    scan.setFilter(new SingleColumnValueFilter(messagesMetricsColumnFamily, timeSincePreviousMessage, CompareOp.GREATER, averagePauseTime))
+    
+    HTableStage
+      .source(scan, messagesSettings)
+      .runWith(Sink.fold(0) { (count, _) => count + 1 })
   }
 }

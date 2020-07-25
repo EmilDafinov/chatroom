@@ -11,6 +11,6 @@ case class ChatroomMessage(
 
 case class ChatroomMessageWithStats(
   chatroomId: Int,
-  previousMessageTimestamp: Long,                                 
+  timeSincePreviousMessage: Long,
   message: ChatroomMessage,
 )
