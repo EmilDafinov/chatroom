@@ -12,14 +12,16 @@ import scala.concurrent.ExecutionContext
 class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
 
   def storeMessages(addMessagesRequest: AddMessages)(implicit mat: Materializer, ec: ExecutionContext) = {
+    //This could be redundant if we assume the messages are already sorted in the request
     val sortedMessages = addMessagesRequest.messages.sortBy(_.index)
 
     for {
+      //We check which messages from the batch are already persisted in order to avoid updating the chatroom metrics twice for them
       knownMessages <- chatroomMessageRepository.chatroomMessagesInPeriod(
         chatroomId = addMessagesRequest.chatRoomId,
         from = sortedMessages.head.timestamp,
-        to = sortedMessages.last.timestamp + 1 //include the last message
-      ).runWith(Sink.seq)
+        to = sortedMessages.last.timestamp + 1 //include the last message from the batch
+      )
       
       messagesPersistedForThisRequest <- toMessagesWithStats(
         chatRoomId = addMessagesRequest.chatRoomId,
@@ -27,6 +29,8 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
         sortedMessagesInBatch = sortedMessages
       )
         .via(chatroomMessageRepository.persistMessages)
+        //This is a potential point source if inconsistency: if a message gets persisted, but updating the metrics fails,
+        //then our average would be wrong !
         .via(chatroomMessageRepository.updateChatroomMetrics)
         .runWith(Sink.seq) 
     } yield messagesPersistedForThisRequest
@@ -39,6 +43,8 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
     
     val messagesInBatchByIndex = sortedMessagesInBatch.map(msg => msg.index -> msg).toMap
 
+    //For the first message in the batch, we don't know the pause associated, we have to look up the time of the 
+    //previous message from the database
     val firstMessageSource: Source[ChatroomMessageWithStats, NotUsed] =
       if (messagesFromBatchAlreadyPersisted.contains(sortedMessagesInBatch.head))
         Source.empty[ChatroomMessageWithStats]
@@ -56,6 +62,7 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
           )
         }
 
+    
     val tailMessagesSource = Source
       .fromIterator(() => sortedMessagesInBatch.tail.iterator)
       .filterNot(messagesFromBatchAlreadyPersisted.contains)

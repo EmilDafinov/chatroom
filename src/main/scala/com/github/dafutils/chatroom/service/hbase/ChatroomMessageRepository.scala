@@ -18,7 +18,7 @@ import org.apache.hadoop.hbase.filter.SingleColumnValueFilter
 import uk.gov.hmrc.emailaddress.EmailAddress
 
 import scala.collection.immutable.Seq
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 
 class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
@@ -90,6 +90,27 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     converter = messagesConverter
   )
 
+  /**
+   * Access both tables so they can be created if they don't exist
+   * */
+  def initializeDatastore(implicit ec: ExecutionContext, mat: Materializer) = {
+    val chatroomsScan = new Scan()
+    chatroomsScan.setMaxResultSize(1)
+    
+    val messagesScan = new Scan()
+    messagesScan.setMaxResultSize(1)
+    
+    val pingChatroomsTable = HTableStage
+      .source(chatroomsScan, chatroomMetricsSettings)
+      .runWith(Sink.ignore)
+
+    val pingMessagesTable = HTableStage
+      .source(messagesScan, messagesSettings)
+      .runWith(Sink.ignore)
+    
+    pingChatroomsTable.flatMap(_ => pingMessagesTable)
+  }
+  
   def createChatroom(chatroom: NewChatroom)(implicit mat: Materializer) = {
     Source
       .single(chatroom)
@@ -109,17 +130,19 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
   def timestampOfPreviousMessageInChatroom(chatroomId: Int, messageIndex: Int, messageTimestamp: Long)(implicit mat: Materializer): Source[Long, NotUsed] = {
 
     require(messageIndex >= 1, s"Attempted to get the previous message time for message with index $messageIndex in $chatroomId.")
-
-    val previousMessageScan = new Scan(MessagesTable.rowKey(chatroomId, messageTimestamp))
-    previousMessageScan.setReversed(true)
-    previousMessageScan.setMaxResultSize(1)
-
+    
     messageIndex match {
       case 1 =>
         Source.single(-1)
       case index if index > 1 =>
+        
         HTableStage
-          .source(previousMessageScan, messagesSettings)
+          .source(
+            scan = lastKnownMessageBefore(
+              currentMessageRowKey =  MessagesTable.rowKey(chatroomId, messageTimestamp)
+            ),
+            settings = messagesSettings
+          )
           .map { result =>
 
             val previousMessageTimestamp: Long = result.getValue(messagesContentColumnFamily, timestampColumnName)
@@ -136,7 +159,14 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     }
   }
 
-  def chatroomMessagesInPeriod(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer): Source[ChatroomMessageWithStats, NotUsed] = {
+  private def lastKnownMessageBefore(currentMessageRowKey: Array[Byte]) = {
+    val previousMessageScan = new Scan(currentMessageRowKey)
+    previousMessageScan.setReversed(true)
+    previousMessageScan.setMaxResultSize(1)
+    previousMessageScan
+  }
+
+  def chatroomMessagesInPeriod(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer): Future[Seq[ChatroomMessageWithStats]] = {
     
     val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
     HTableStage
@@ -152,7 +182,7 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
             message = result.getValue(messagesContentColumnFamily, messageContentColumnName)
           )
         )
-      }
+      }.runWith(Sink.seq)
   }
 
   def averagePause(chatroomId: Int)(implicit mat: Materializer, ec: ExecutionContext) = {
@@ -163,7 +193,7 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
         val totalPauseCount: Long = result.getValue(chatroomMetricsColumnFamilyName, totalPausesCountColumnName)
         totalPauseTime.toDouble / totalPauseCount.toDouble
       }
-      .runWith(Sink.headOption).map(_.getOrElse(Double.MaxValue))
+      .runWith(Sink.headOption)
   }
 
   def countLongPauses(chatroomId: Int, from: Long, to: Long, averagePauseTime: Double)(implicit mat: Materializer) = {

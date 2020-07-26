@@ -3,7 +3,7 @@ package com.github.dafutils.chatroom.service
 import akka.stream.Materializer
 import com.github.dafutils.chatroom.service.hbase.ChatroomMessageRepository
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 
 class PausesService(chatroomMessageRepository: ChatroomMessageRepository) {
 
@@ -11,8 +11,11 @@ class PausesService(chatroomMessageRepository: ChatroomMessageRepository) {
     //TODO: handle requests for long periods
 
     for {
-      eventualAverage <- chatroomMessageRepository.averagePause(chatroomId)
-      rowCount <- chatroomMessageRepository.countLongPauses(chatroomId, from, to, eventualAverage)
-    } yield rowCount
+      maybeAveragePauseLength <- chatroomMessageRepository.averagePause(chatroomId)
+      eventualLongPausesCount = maybeAveragePauseLength.map { averagePauseLength =>
+        chatroomMessageRepository.countLongPauses(chatroomId, from, to, averagePauseLength)
+      }.getOrElse(Future.successful(0))
+      longPausesCount <- eventualLongPausesCount
+    } yield longPausesCount
   }
 }
