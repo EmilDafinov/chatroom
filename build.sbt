@@ -3,6 +3,8 @@ import sbt.librarymanagement
 lazy val json4sVersion = "3.7.0-M4"
 
 val AkkaVersion = "2.5.31"
+val scalatestVersuib = "3.2.0"
+
 lazy val root = (project in file("."))
   .enablePlugins(
     JavaServerAppPackaging,
@@ -33,7 +35,13 @@ lazy val root = (project in file("."))
       "com.typesafe" % "config" % "1.4.0",
       "org.json4s" %% "json4s-jackson" % json4sVersion,
       "org.json4s" %% "json4s-ext" % json4sVersion,
-      "uk.gov.hmrc" %% "emailaddress" % "3.4.0"
+      "uk.gov.hmrc" %% "emailaddress" % "3.4.0",
+      "org.scalatest" %% "scalatest" % scalatestVersuib % Test,
+      "org.scalatest" %% "scalatest-wordspec" % scalatestVersuib % Test,
+      "org.scalatest" %% "scalatest-shouldmatchers" % scalatestVersuib % Test,
+      "org.scalatestplus" %% "mockito-3-3" % "3.2.0.0" % Test,
+      "org.mockito" % "mockito-core" % "3.4.4" % Test,
+      
     ),
     dockerBaseImage := "openjdk:11.0.7-jre",
   )

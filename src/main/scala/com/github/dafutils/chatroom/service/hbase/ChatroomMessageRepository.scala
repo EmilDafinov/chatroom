@@ -127,7 +127,8 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
       .via(HTableStage.flow(chatroomMetricsSettings))
   }
 
-  def timestampOfPreviousMessageInChatroom(chatroomId: Int, messageIndex: Int, messageTimestamp: Long)(implicit mat: Materializer): Source[Long, NotUsed] = {
+  def timestampOfPreviousMessageInChatroom(chatroomId: Int, messageIndex: Int, messageTimestamp: Long)
+                                          (implicit mat: Materializer): Source[Long, NotUsed] = {
 
     require(messageIndex >= 1, s"Attempted to get the previous message time for message with index $messageIndex in $chatroomId.")
     
@@ -166,7 +167,8 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     previousMessageScan
   }
 
-  def chatroomMessagesInPeriod(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer): Future[Seq[ChatroomMessageWithStats]] = {
+  def chatroomMessagesInPeriod(chatroomId: Int, from: Long, to: Long)
+                              (implicit mat: Materializer): Future[Seq[ChatroomMessageWithStats]] = {
     
     val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
     HTableStage

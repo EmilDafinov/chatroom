@@ -72,7 +72,7 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
 
         ChatroomMessageWithStats(
           chatroomId = chatRoomId,
-          timeSincePreviousMessage = previousMessage.timestamp,
+          timeSincePreviousMessage = nonPersistedMessage.timestamp - previousMessage.timestamp,
           message = nonPersistedMessage
         )
       }

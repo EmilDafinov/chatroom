@@ -25,5 +25,6 @@ object Main extends App
       case Failure(exception) =>
         log.error(cause = exception, message = "Service startup failed")
         actorSystem.terminate()
+        System.exit(1)
     }
 }
