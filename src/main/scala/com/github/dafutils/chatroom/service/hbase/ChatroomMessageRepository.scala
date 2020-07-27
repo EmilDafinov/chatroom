@@ -6,7 +6,7 @@ import akka.stream.alpakka.hbase.scaladsl.HTableStage
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import com.github.dafutils.chatroom.http.model.{ChatroomMessage, ChatroomMessageWithStats, NewChatroom}
 import com.github.dafutils.chatroom.service.hbase.HbaseImplicits._
-import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable.{chatroomContentColumnFamilyName, chatroomMetricsColumnFamilyName, totalPausesCountColumnName, totalPausesDurationColumnName}
+import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable.{rowKey => _, _}
 import com.github.dafutils.chatroom.service.hbase.families.MessagesTable._
 import com.github.dafutils.chatroom.service.hbase.families.{ChatroomsTable, MessagesTable}
 import org.apache.hadoop.conf.Configuration
@@ -134,31 +134,19 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
     HTableStage
       .source(
-        scan = lastKnownMessageBefore(
-          currentMessageRowKey = MessagesTable.rowKey(chatroomId, messageTimestamp)
+        scan = previousRowInTable(
+          currentRow = MessagesTable.rowKey(chatroomId, messageTimestamp)
         ),
         settings = messagesSettings
       )
       .map(extractChatroomMessageWithStats)
-      .filter( _.chatroomId == chatroomId)
+      .filter(_.chatroomId == chatroomId)
       .filter(_.message.index == messageIndex - 1)
       .runWith(Sink.headOption)
   }
-
-  private def extractChatroomMessageWithStats(result: Result): ChatroomMessageWithStats =
-    ChatroomMessageWithStats(
-      chatroomId = result.getValue(messagesContentColumnFamily, chatroomIdColumnName),
-      timeSincePreviousMessage = result.getValue(messagesMetricsColumnFamily, timeSincePreviousMessage),
-      message = ChatroomMessage(
-        index = result.getValue(messagesContentColumnFamily, indexColumnName),
-        timestamp = result.getValue(messagesContentColumnFamily, timestampColumnName),
-        author = EmailAddress(result.getValue(messagesContentColumnFamily, authorColumnName)),
-        message = result.getValue(messagesContentColumnFamily, messageContentColumnName)
-      )
-    )
-
-  private def lastKnownMessageBefore(currentMessageRowKey: Array[Byte]) = {
-    val previousMessageScan = new Scan(currentMessageRowKey)
+  
+  private def previousRowInTable(currentRow: Array[Byte]): Scan = {
+    val previousMessageScan = new Scan(currentRow)
     previousMessageScan.setReversed(true)
     previousMessageScan.setMaxResultSize(1)
     previousMessageScan
@@ -174,6 +162,18 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
       .runWith(Sink.seq)
   }
 
+  private def extractChatroomMessageWithStats(result: Result): ChatroomMessageWithStats =
+    ChatroomMessageWithStats(
+      chatroomId = result.getValue(messagesContentColumnFamily, chatroomIdColumnName),
+      timeSincePreviousMessage = result.getValue(messagesMetricsColumnFamily, timeSincePreviousMessage),
+      message = ChatroomMessage(
+        index = result.getValue(messagesContentColumnFamily, indexColumnName),
+        timestamp = result.getValue(messagesContentColumnFamily, timestampColumnName),
+        author = EmailAddress(result.getValue(messagesContentColumnFamily, authorColumnName)),
+        message = result.getValue(messagesContentColumnFamily, messageContentColumnName)
+      )
+    )
+
   def averagePause(chatroomId: Int)(implicit mat: Materializer, ec: ExecutionContext): Future[Option[Double]] = {
     HTableStage
       .source(new Scan(new Get(ChatroomsTable.rowKey(chatroomId, modBy))), chatroomMetricsSettings)
@@ -187,6 +187,7 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
   def countLongPauses(chatroomId: Int, from: Long, to: Long, averagePauseTime: Double)(implicit mat: Materializer) = {
     //TODO: large periods...will this attempt to load everything into memory?
+    require(averagePauseTime > 0, "The average pause length cannot be negative")
 
     //Note: first messages in the chatroom have timeSincePreviousMessage == -1 and therefore would be filtered out.
     val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
