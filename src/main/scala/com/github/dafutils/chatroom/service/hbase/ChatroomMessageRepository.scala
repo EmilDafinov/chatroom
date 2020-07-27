@@ -1,6 +1,5 @@
 package com.github.dafutils.chatroom.service.hbase
 
-import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.alpakka.hbase.HTableSettings
 import akka.stream.alpakka.hbase.scaladsl.HTableStage
@@ -92,14 +91,14 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
   /**
    * Access both tables so they can be created if they don't exist
-   * */
+   **/
   def initializeDatastore(implicit ec: ExecutionContext, mat: Materializer) = {
     val chatroomsScan = new Scan()
     chatroomsScan.setMaxResultSize(1)
-    
+
     val messagesScan = new Scan()
     messagesScan.setMaxResultSize(1)
-    
+
     val pingChatroomsTable = HTableStage
       .source(chatroomsScan, chatroomMetricsSettings)
       .runWith(Sink.ignore)
@@ -107,10 +106,10 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     val pingMessagesTable = HTableStage
       .source(messagesScan, messagesSettings)
       .runWith(Sink.ignore)
-    
+
     pingChatroomsTable.flatMap(_ => pingMessagesTable)
   }
-  
+
   def createChatroom(chatroom: NewChatroom)(implicit mat: Materializer) = {
     Source
       .single(chatroom)
@@ -127,38 +126,36 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
       .via(HTableStage.flow(chatroomMetricsSettings))
   }
 
-  def timestampOfPreviousMessageInChatroom(chatroomId: Int, messageIndex: Int, messageTimestamp: Long)
-                                          (implicit mat: Materializer): Source[Long, NotUsed] = {
 
-    require(messageIndex >= 1, s"Attempted to get the previous message time for message with index $messageIndex in $chatroomId.")
-    
-    messageIndex match {
-      case 1 =>
-        Source.single(-1)
-      case index if index > 1 =>
-        
-        HTableStage
-          .source(
-            scan = lastKnownMessageBefore(
-              currentMessageRowKey =  MessagesTable.rowKey(chatroomId, messageTimestamp)
-            ),
-            settings = messagesSettings
-          )
-          .map { result =>
+  def previousMessageInChatroom(chatroomId: Int, messageIndex: Int, messageTimestamp: Long)
+                               (implicit mat: Materializer): Future[Option[ChatroomMessageWithStats]] = {
 
-            val previousMessageTimestamp: Long = result.getValue(messagesContentColumnFamily, timestampColumnName)
-            val previousMessageIndex: Int = result.getValue(messagesContentColumnFamily, indexColumnName)
-            val previousMessageChatroomId: Int = result.getValue(messagesContentColumnFamily, chatroomIdColumnName)
+    require(messageIndex > 1, s"Attempted to get the previous message time for message with index $messageIndex in $chatroomId.")
 
-            (previousMessageChatroomId, previousMessageIndex, previousMessageTimestamp)
-          }
-          .filter { case (previousMessageChatroomId, previousMessageIndex, _) =>
-            //Make sure that what we got is indeed the previous message in the chatroom (by index)
-            previousMessageChatroomId == chatroomId && previousMessageIndex == messageIndex - 1
-          }
-          .map(_._3)
-    }
+    HTableStage
+      .source(
+        scan = lastKnownMessageBefore(
+          currentMessageRowKey = MessagesTable.rowKey(chatroomId, messageTimestamp)
+        ),
+        settings = messagesSettings
+      )
+      .map(extractChatroomMessageWithStats)
+      .filter( _.chatroomId == chatroomId)
+      .filter(_.message.index == messageIndex - 1)
+      .runWith(Sink.headOption)
   }
+
+  private def extractChatroomMessageWithStats(result: Result): ChatroomMessageWithStats =
+    ChatroomMessageWithStats(
+      chatroomId = result.getValue(messagesContentColumnFamily, chatroomIdColumnName),
+      timeSincePreviousMessage = result.getValue(messagesMetricsColumnFamily, timeSincePreviousMessage),
+      message = ChatroomMessage(
+        index = result.getValue(messagesContentColumnFamily, indexColumnName),
+        timestamp = result.getValue(messagesContentColumnFamily, timestampColumnName),
+        author = EmailAddress(result.getValue(messagesContentColumnFamily, authorColumnName)),
+        message = result.getValue(messagesContentColumnFamily, messageContentColumnName)
+      )
+    )
 
   private def lastKnownMessageBefore(currentMessageRowKey: Array[Byte]) = {
     val previousMessageScan = new Scan(currentMessageRowKey)
@@ -169,22 +166,12 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
   def chatroomMessagesInPeriod(chatroomId: Int, from: Long, to: Long)
                               (implicit mat: Materializer): Future[Seq[ChatroomMessageWithStats]] = {
-    
+
     val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
     HTableStage
       .source(scan, messagesSettings)
-      .map { result =>
-        ChatroomMessageWithStats(
-          chatroomId = result.getValue(messagesContentColumnFamily, chatroomIdColumnName),
-          timeSincePreviousMessage = result.getValue(messagesMetricsColumnFamily, timeSincePreviousMessage),
-          message = ChatroomMessage(
-            index = result.getValue(messagesContentColumnFamily, indexColumnName),
-            timestamp = result.getValue(messagesContentColumnFamily, timestampColumnName),
-            author = EmailAddress(result.getValue(messagesContentColumnFamily, authorColumnName)),
-            message = result.getValue(messagesContentColumnFamily, messageContentColumnName)
-          )
-        )
-      }.runWith(Sink.seq)
+      .map(extractChatroomMessageWithStats)
+      .runWith(Sink.seq)
   }
 
   def averagePause(chatroomId: Int)(implicit mat: Materializer, ec: ExecutionContext) = {
@@ -200,9 +187,11 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
   def countLongPauses(chatroomId: Int, from: Long, to: Long, averagePauseTime: Double)(implicit mat: Materializer) = {
     //TODO: large periods...will this attempt to load everything into memory?
+
+    //Note: first messages in the chatroom have timeSincePreviousMessage == -1 and therefore would be filtered out.
     val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
     scan.setFilter(new SingleColumnValueFilter(messagesMetricsColumnFamily, timeSincePreviousMessage, CompareOp.GREATER, averagePauseTime))
-    
+
     HTableStage
       .source(scan, messagesSettings)
       .runWith(Sink.fold(0) { (count, _) => count + 1 })

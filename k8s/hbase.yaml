@@ -64,6 +64,7 @@ spec:
       name: zookeeper
     - port: 16010
       name: master-web-ui
+      # for the last 2 ports, I just enabled them because HBase was complaining,  no idea what they are for...
     - port: 16000
       name: something
     - port: 16020

@@ -2,7 +2,8 @@ package com.github.dafutils.chatroom.service
 
 import akka.NotUsed
 import akka.stream.Materializer
-import akka.stream.scaladsl.{Merge, Sink, Source}
+import akka.stream.scaladsl.{Concat, Sink, Source}
+import com.github.dafutils.chatroom.http.exception.MissingPreviousBatchException
 import com.github.dafutils.chatroom.http.model.{AddMessages, ChatroomMessage, ChatroomMessageWithStats}
 import com.github.dafutils.chatroom.service.hbase.ChatroomMessageRepository
 
@@ -22,61 +23,79 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
         from = sortedMessages.head.timestamp,
         to = sortedMessages.last.timestamp + 1 //include the last message from the batch
       )
-      
+
       messagesPersistedForThisRequest <- toMessagesWithStats(
         chatRoomId = addMessagesRequest.chatRoomId,
         messagesFromBatchAlreadyPersisted = knownMessages.map(_.message),
         sortedMessagesInBatch = sortedMessages
       )
         .via(chatroomMessageRepository.persistMessages)
-        //This is a potential point source if inconsistency: if a message gets persisted, but updating the metrics fails,
+        //This is a potential source if inconsistency: if a message gets persisted, but updating the metrics fails,
         //then our average would be wrong !
         .via(chatroomMessageRepository.updateChatroomMetrics)
-        .runWith(Sink.seq) 
+        .runWith(Sink.seq)
     } yield messagesPersistedForThisRequest
   }
-
-  //TODO: extract and test
+  
   private def toMessagesWithStats(chatRoomId: Int,
                                   messagesFromBatchAlreadyPersisted: Seq[ChatroomMessage],
-                                  sortedMessagesInBatch: Seq[ChatroomMessage])(implicit mat: Materializer) = {
-    
+                                  sortedMessagesInBatch: Seq[ChatroomMessage])
+                                 (implicit mat: Materializer, ex: ExecutionContext): Source[ChatroomMessageWithStats, NotUsed] = {
+
     val messagesInBatchByIndex = sortedMessagesInBatch.map(msg => msg.index -> msg).toMap
 
     //For the first message in the batch, we don't know the pause associated, we have to look up the time of the 
     //previous message from the database
-    val firstMessageSource: Source[ChatroomMessageWithStats, NotUsed] =
-      if (messagesFromBatchAlreadyPersisted.contains(sortedMessagesInBatch.head))
+
+    val firstMessageSource = sortedMessagesInBatch.head match {
+      case messageAlreadyPersisted if messagesFromBatchAlreadyPersisted.contains(messageAlreadyPersisted) =>
         Source.empty[ChatroomMessageWithStats]
-      else
-        chatroomMessageRepository.timestampOfPreviousMessageInChatroom(
+      case firstMessageInChatroom if firstMessageInChatroom.index == 1 =>
+        Source.single(
+          ChatroomMessageWithStats(
+            chatroomId = chatRoomId,
+            timeSincePreviousMessage = -1,
+            message = sortedMessagesInBatch.head
+          )
+        )
+      case _ =>
+        val eventualPreviousMessage = chatroomMessageRepository.previousMessageInChatroom(
           chatroomId = chatRoomId,
           messageTimestamp = sortedMessagesInBatch.head.timestamp,
           messageIndex = sortedMessagesInBatch.head.index
-        )
-        .map { timestampOfLastMessageOfPreviousBatch =>
-          ChatroomMessageWithStats(
-            chatroomId = chatRoomId,
-            timeSincePreviousMessage = timestampOfLastMessageOfPreviousBatch,
-            message = sortedMessagesInBatch.head
+        ).map {
+          _.getOrElse(
+            throw new MissingPreviousBatchException(
+              s"The message before the message with chatrooId $chatRoomId and index ${sortedMessagesInBatch.head.index} was not found"
+            )
           )
         }
 
-    
-    val tailMessagesSource = Source
-      .fromIterator(() => sortedMessagesInBatch.tail.iterator)
-      .filterNot(messagesFromBatchAlreadyPersisted.contains)
-      .map { nonPersistedMessage =>
+        Source.fromFuture(eventualPreviousMessage)
+          .map { lastMessageOfPreviousBatch =>
+            ChatroomMessageWithStats(
+              chatroomId = chatRoomId,
+              timeSincePreviousMessage = sortedMessagesInBatch.head.timestamp - lastMessageOfPreviousBatch.message.timestamp,
+              message = sortedMessagesInBatch.head
+            )
+          }
+    }
 
-        val previousMessage = messagesInBatchByIndex(nonPersistedMessage.index - 1)
+    //For all messages but the first, we don't need a database lookup to find out the length of the pause
+    val tailMessagesSource = Source
+      .fromIterator(() => sortedMessagesInBatch.tail.reverseIterator) //store staring from the last message, it would be needed for the next batch...
+      .filterNot(messagesFromBatchAlreadyPersisted.contains)
+      .map { currentMessage =>
+
+        val previousMessage = messagesInBatchByIndex(currentMessage.index - 1)
 
         ChatroomMessageWithStats(
           chatroomId = chatRoomId,
-          timeSincePreviousMessage = nonPersistedMessage.timestamp - previousMessage.timestamp,
-          message = nonPersistedMessage
+          timeSincePreviousMessage = currentMessage.timestamp - previousMessage.timestamp,
+          message = currentMessage
         )
       }
 
-    Source.combine(tailMessagesSource, firstMessageSource)(Merge(_))
+    Source.combine(tailMessagesSource, firstMessageSource)(Concat(_))
   }
 }
