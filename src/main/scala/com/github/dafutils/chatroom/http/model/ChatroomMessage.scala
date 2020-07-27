@@ -7,7 +7,9 @@ case class ChatroomMessage(
   timestamp: Long,
   author: EmailAddress,
   message: String                        
-)
+) {
+  require(index >= 1, "The chatroom messages should have indices greater than 1")
+}
 
 case class ChatroomMessageWithStats(
   chatroomId: Int,

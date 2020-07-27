@@ -8,11 +8,21 @@ import com.github.dafutils.chatroom.http.model.{AddMessages, ChatroomMessage, Ch
 import com.github.dafutils.chatroom.service.hbase.ChatroomMessageRepository
 
 import scala.collection.immutable.Seq
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 
 class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
 
-  def storeMessages(addMessagesRequest: AddMessages)(implicit mat: Materializer, ec: ExecutionContext) = {
+  /**
+   * Stores the requested messages. A few caveates: 
+   * - Messages are stored only if they do not already exist in the datastore (reinserting the same message is idempotent, however incrementing the pause stats is NOT)
+   * - The head message in the batch requires a datastore lookup in order to determine the length of the pause since the previous message. If
+   *   the lookup fails (for example due to the previous message not having been stored yet), this method would throw. However, all messages
+   *   other than the head would be persisted even in the case
+   *   
+   *   @throws MissingPreviousBatchException if the last message of the previous batch is required but not found. All messages from the batch other
+   *                                         than the head would nevertheless be persisted to unblok storing of subsequent batches
+   * */
+  def storeMessages(addMessagesRequest: AddMessages)(implicit mat: Materializer, ec: ExecutionContext): Future[Seq[ChatroomMessageWithStats]] = {
     //This could be redundant if we assume the messages are already sorted in the request
     val sortedMessages = addMessagesRequest.messages.sortBy(_.index)
 

@@ -39,7 +39,7 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
     val increment = new Increment(rowKey(message.chatroomId, modBy))
     val pauseCountIncrementValue: Long = if (message.message.index > 1) 1 else 0
-    val totalPauseTimeIncrementValue: Long = if (message.message.index > 1) message.message.timestamp - message.timeSincePreviousMessage else 0
+    val totalPauseTimeIncrementValue: Long = if (message.message.index > 1) message.timeSincePreviousMessage else 0
 
     increment.addColumn(chatroomMetricsColumnFamilyName, totalPausesCountColumnName, pauseCountIncrementValue)
     increment.addColumn(chatroomMetricsColumnFamilyName, totalPausesDurationColumnName, totalPauseTimeIncrementValue)
@@ -72,12 +72,7 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     put.addColumn(messagesContentColumnFamily, authorColumnName, message.message.author.value)
     put.addColumn(messagesContentColumnFamily, messageContentColumnName, message.message.message) // Tipping my hat to Joseph Heller ;)
 
-    val pauseSincePreviousMessage: Long = if (message.timeSincePreviousMessage == -1) {
-      -1
-    } else {
-      message.message.timestamp - message.timeSincePreviousMessage
-    }
-    put.addColumn(messagesMetricsColumnFamily, timeSincePreviousMessage, pauseSincePreviousMessage)
+    put.addColumn(messagesMetricsColumnFamily, timeSincePreviousMessage, message.timeSincePreviousMessage)
 
     List(put)
   }
