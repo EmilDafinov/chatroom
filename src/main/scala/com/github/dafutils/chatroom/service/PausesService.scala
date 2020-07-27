@@ -7,7 +7,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 class PausesService(chatroomMessageRepository: ChatroomMessageRepository) {
 
-  def countLongPauses(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer, ec: ExecutionContext) = {
+  def countLongPauses(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer, ec: ExecutionContext): Future[Int] = {
     //TODO: handle requests for long periods
 
     for {

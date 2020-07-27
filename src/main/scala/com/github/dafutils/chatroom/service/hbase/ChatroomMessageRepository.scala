@@ -174,7 +174,7 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
       .runWith(Sink.seq)
   }
 
-  def averagePause(chatroomId: Int)(implicit mat: Materializer, ec: ExecutionContext) = {
+  def averagePause(chatroomId: Int)(implicit mat: Materializer, ec: ExecutionContext): Future[Option[Double]] = {
     HTableStage
       .source(new Scan(new Get(ChatroomsTable.rowKey(chatroomId, modBy))), chatroomMetricsSettings)
       .map { result =>
