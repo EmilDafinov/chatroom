@@ -38,12 +38,12 @@
 					}
 				},
 				"url": {
-					"raw": "{{service-host}}/chatroom",
+					"raw": "{{service-host}}/chatrooms",
 					"host": [
 						"{{service-host}}"
 					],
 					"path": [
-						"chatroom"
+						"chatrooms"
 					]
 				}
 			},

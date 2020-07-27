@@ -23,7 +23,7 @@ trait Services {
     modBy = applicationConfin.getInt("mod.by")
   )
   
-  val chatroomRepository = new ChatroomService(chatroomMessageRepository = chatroomMessageRepository)
+  val chatroomService = new ChatroomService(chatroomMessageRepository = chatroomMessageRepository)
   
   val pausesService = new PausesService(chatroomMessageRepository = chatroomMessageRepository)
 }

@@ -6,11 +6,14 @@ Simple chatroom application using HBase as a data store.
 
 You can run the application in your local kubernetes cluster.
 In order to run it you would need:
+
 *  docker, on OS X
 you can do that by using Homebrew:
 `brew cask install docker`. Afterwards, enable the local kubernetes cluster in the 
 docker preferences and make sure the local cluster is selected
 
+* sbt
+`brew install sbt`
 * skaffold: 
 `brew install skaffold`
 
