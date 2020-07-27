@@ -13,7 +13,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.TableName
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
-import org.apache.hadoop.hbase.filter.SingleColumnValueFilter
+import org.apache.hadoop.hbase.filter.{LongComparator, SingleColumnValueFilter}
 import uk.gov.hmrc.emailaddress.EmailAddress
 
 import scala.collection.immutable.Seq
@@ -186,7 +186,14 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
     //Note: first messages in the chatroom have timeSincePreviousMessage == -1 and therefore would be filtered out.
     val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
-    scan.setFilter(new SingleColumnValueFilter(messagesMetricsColumnFamily, timeSincePreviousMessage, CompareOp.GREATER, averagePauseTime))
+    scan.setFilter(new SingleColumnValueFilter(
+      messagesMetricsColumnFamily, 
+      timeSincePreviousMessage, 
+      CompareOp.GREATER,
+      //the casting strips away the fractional part of the double. However, since the next smaller long would be greater by a whole unit,
+      //the comparison would still hold
+      new LongComparator(averagePauseTime.toLong) 
+    ))
 
     HTableStage
       .source(scan, messagesSettings)
