@@ -29,7 +29,7 @@ object ChatroomsTable {
    * The reason we don't want to just use the chatroom id is that I assume that new chatrooms are created consecutively, 
    * so we'd create hotspotting due to the fact that the chatroom ids would be monotonically increasing
    */
-  def rowKey(chatroomId: Int, modulo: Int) =
+  def rowKey(chatroomId: Long, modulo: Int) =
     Bytes.toBytes(chatroomId % modulo) ++ Bytes.toBytes(chatroomId)
 }
 
@@ -56,7 +56,7 @@ object MessagesTable {
    * Also, we are assuming that the incoming write traffic is evenly distributed among the chatrooms, so we'd avoid hotspotting 
    * (writes to the same chatroom are likely to end up on the same server)
    **/
-  def rowKey(chatroomId: Int, messageTimestamp: Long): Array[Byte] =
+  def rowKey(chatroomId: Long, messageTimestamp: Long): Array[Byte] =
     Bytes.toBytes(chatroomId) ++ Bytes.toBytes(messageTimestamp)
 
 }

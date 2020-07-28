@@ -5,7 +5,7 @@ import akka.stream.Materializer
 import akka.stream.alpakka.hbase.HTableSettings
 import akka.stream.alpakka.hbase.scaladsl.HTableStage
 import akka.stream.scaladsl.{Flow, Sink, Source}
-import com.github.dafutils.chatroom.http.model.{ChatroomMessage, ChatroomMessageWithStats, NewChatroom}
+import com.github.dafutils.chatroom.http.model.{Chatroom, ChatroomMessage, ChatroomMessageWithStats}
 import com.github.dafutils.chatroom.service.hbase.HbaseImplicits._
 import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable.{rowKey => _, _}
 import com.github.dafutils.chatroom.service.hbase.families.MessagesTable._
@@ -14,7 +14,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.TableName
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
-import org.apache.hadoop.hbase.filter.{FilterList, LongComparator, SingleColumnValueFilter}
+import org.apache.hadoop.hbase.filter.{LongComparator, SingleColumnValueFilter}
 import uk.gov.hmrc.emailaddress.EmailAddress
 
 import scala.collection.immutable.Seq
@@ -23,7 +23,7 @@ import scala.concurrent.{ExecutionContext, Future}
 class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
   // Describes the HBase operation needed to store the information regarding a chatroom
-  private val chatroomConverter: NewChatroom => Seq[Mutation] = { chatroom =>
+  private val chatroomConverter: Chatroom => Seq[Mutation] = { chatroom =>
     import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable._
 
     val put = new Put(rowKey(chatroom.id, modBy))
@@ -58,7 +58,7 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     converter = chatroomStatsConverter
   )
 
-  private val createChatroomSettings: HTableSettings[NewChatroom] = HTableSettings(
+  private val createChatroomSettings: HTableSettings[Chatroom] = HTableSettings(
     conf = configuration,
     tableName = TableName.valueOf(ChatroomsTable.tableName),
     columnFamilies = Seq(chatroomContentColumnFamilyName, chatroomMetricsColumnFamilyName),
@@ -112,8 +112,8 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
   /**
    * Persist a chatroom.
-   * */
-  def createChatroom(chatroom: NewChatroom)(implicit mat: Materializer): Future[NewChatroom] = {
+   **/
+  def createChatroom(chatroom: Chatroom)(implicit mat: Materializer): Future[Chatroom] = {
     Source
       .single(chatroom)
       .via(HTableStage.flow(createChatroomSettings))
@@ -123,7 +123,7 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
   /**
    * Persistance flow used to store chatroom messages in HBase. Messages have already been enriched with 
    * the length of the preceding pause.
-   * */
+   **/
   def persistMessages(implicit mat: Materializer): Flow[ChatroomMessageWithStats, ChatroomMessageWithStats, NotUsed] = {
     Flow[ChatroomMessageWithStats]
       .via(HTableStage.flow(messagesSettings))
@@ -131,7 +131,7 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
   /**
    * Update the total pause duration and total pause count for a chatroom
-   * */
+   **/
   def updateChatroomMetrics(implicit mat: Materializer): Flow[ChatroomMessageWithStats, ChatroomMessageWithStats, NotUsed] = {
     Flow[ChatroomMessageWithStats]
       .via(HTableStage.flow(chatroomMetricsSettings))
@@ -140,37 +140,43 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
   /**
    * Retrieve the previous message in a chatroom from HBase, if it already exists in the datastore.
-   * */
-  def previousMessageInChatroom(chatroomId: Int, messageIndex: Int, messageTimestamp: Long)
+   **/
+  def previousMessageInChatroom(chatroomId: Long, messageIndex: Long, messageTimestamp: Long)
                                (implicit mat: Materializer): Future[Option[ChatroomMessageWithStats]] = {
 
     require(messageIndex > 1, s"Attempted to get the previous message time for message with index $messageIndex in $chatroomId. Only makes sense for the second and later messages.")
-    
+
     HTableStage
       .source(
         scan = {
           val previousMessageScan = new Scan(MessagesTable.rowKey(chatroomId, messageTimestamp))
           previousMessageScan.setReversed(true)
           previousMessageScan.setMaxResultSize(1)
-          previousMessageScan.setFilter(
-            new FilterList(
-              FilterList.Operator.MUST_PASS_ALL,
-              new SingleColumnValueFilter(messageContentColumnName, chatroomIdColumnName, CompareOp.EQUAL, new LongComparator(chatroomId)),
-              new SingleColumnValueFilter(messageContentColumnName, indexColumnName, CompareOp.EQUAL, new LongComparator(messageIndex - 1)),
-            )
-          )
+          //          previousMessageScan.setFilter(
+          //            new FilterList(
+          //              FilterList.Operator.MUST_PASS_ALL,
+          //              new SingleColumnValueFilter(messageContentColumnName, chatroomIdColumnName, CompareOp.EQUAL, new LongComparator(chatroomId)),
+          //              new SingleColumnValueFilter(messageContentColumnName, indexColumnName, CompareOp.EQUAL, new LongComparator(messageIndex - 1L)),
+          //            )
+          //          )
           previousMessageScan
         },
         settings = messagesSettings
       )
       .map(extractChatroomMessageWithStats)
+      //Possible improvement: I'm filtering the messages in the application as opposed to HBase :(
+      //                      See the commented code above, that was my first attempt. Unfortunately it was still 
+      //                      picking up the previous row in the table, even when it was not satisfying the filters.
+      //                      Very curious to know what I was missing...
+      .filter(_.chatroomId == chatroomId)
+      .filter(_.message.index == messageIndex - 1)
       .runWith(Sink.headOption)
   }
 
   /**
    * Retrieve all messages stored for a given chatroom id for the indicated period (from time included, to time exclusive)
-   * */
-  def chatroomMessagesInPeriod(chatroomId: Int, from: Long, to: Long)
+   **/
+  def chatroomMessagesInPeriod(chatroomId: Long, from: Long, to: Long)
                               (implicit mat: Materializer): Future[Seq[ChatroomMessageWithStats]] = {
 
     val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
@@ -195,8 +201,8 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
   /**
    * Calculate the average pause for a chatroom. We do this by dividing the total pause time by the total pause
    * count. Both of these are stored in the chatroom row.
-   * */
-  def averagePause(chatroomId: Int)(implicit mat: Materializer, ec: ExecutionContext): Future[Option[Double]] = {
+   **/
+  def averagePause(chatroomId: Long)(implicit mat: Materializer, ec: ExecutionContext): Future[Option[Double]] = {
     HTableStage
       .source(new Scan(new Get(ChatroomsTable.rowKey(chatroomId, modBy))), chatroomMetricsSettings)
       .map { result =>
@@ -210,20 +216,20 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
   /**
    * Count the long pauses in a timerange by iterating over it and counting the messages with a pause before them larger than 
    * the average
-   * */
-  def countLongPauses(chatroomId: Int, from: Long, to: Long, averagePauseTime: Double)(implicit mat: Materializer) = {
+   **/
+  def countLongPauses(chatroomId: Long, from: Long, to: Long, averagePauseTime: Double)(implicit mat: Materializer) = {
     //TODO: large periods...will this attempt to load everything into memory?
     require(averagePauseTime > 0, "The average pause length cannot be negative")
 
     //Note: first messages in the chatroom have timeSincePreviousMessage == -1 and therefore would be filtered out.
     val scan = new Scan(MessagesTable.rowKey(chatroomId, from), MessagesTable.rowKey(chatroomId, to))
     scan.setFilter(new SingleColumnValueFilter(
-      messagesMetricsColumnFamily, 
-      timeSincePreviousMessage, 
+      messagesMetricsColumnFamily,
+      timeSincePreviousMessage,
       CompareOp.GREATER,
       //the casting strips away the fractional part of the double. However, since the next smaller long would be greater by a whole unit,
       //the comparison would still hold
-      new LongComparator(averagePauseTime.toLong) 
+      new LongComparator(averagePauseTime.toLong)
     ))
 
     HTableStage

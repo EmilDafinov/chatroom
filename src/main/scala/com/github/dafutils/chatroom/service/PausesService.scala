@@ -7,7 +7,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 class PausesService(chatroomMessageRepository: ChatroomMessageRepository) {
 
-  def countLongPauses(chatroomId: Int, from: Long, to: Long)(implicit mat: Materializer, ec: ExecutionContext): Future[Int] = {
+  def countLongPauses(chatroomId: Long, from: Long, to: Long)(implicit mat: Materializer, ec: ExecutionContext): Future[Long] = {
     for {
       maybeAveragePauseLength <- chatroomMessageRepository.averagePause(chatroomId)
       eventualLongPausesCount = maybeAveragePauseLength.map { averagePauseLength =>

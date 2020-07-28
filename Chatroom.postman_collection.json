@@ -107,7 +107,7 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{service-host}}/messages?from=1594437326300&to=1594437327000&chatroomId=2",
+					"raw": "{{service-host}}/messages?from=1594437326541&to=1594437326901&chatroomId=2",
 					"host": [
 						"{{service-host}}"
 					],
@@ -117,11 +117,11 @@
 					"query": [
 						{
 							"key": "from",
-							"value": "1594437326300"
+							"value": "1594437326541"
 						},
 						{
 							"key": "to",
-							"value": "1594437327000"
+							"value": "1594437326901"
 						},
 						{
 							"key": "chatroomId",
@@ -138,7 +138,7 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{service-host}}/longPauses?from=1594437326541&to=1594437326990&chatroomId=2",
+					"raw": "{{service-host}}/longPauses?from=0&to=121&chatroomId=2",
 					"host": [
 						"{{service-host}}"
 					],
@@ -148,11 +148,11 @@
 					"query": [
 						{
 							"key": "from",
-							"value": "1594437326541"
+							"value": "0"
 						},
 						{
 							"key": "to",
-							"value": "1594437326990"
+							"value": "121"
 						},
 						{
 							"key": "chatroomId",

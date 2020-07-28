@@ -9,7 +9,7 @@ import akka.http.scaladsl.server.{ExceptionHandler, Route}
 import com.github.dafutils.chatroom.AkkaDependencies
 import com.github.dafutils.chatroom.http.JsonSupport._
 import com.github.dafutils.chatroom.http.exception.MissingPreviousBatchException
-import com.github.dafutils.chatroom.http.model.{AddMessages, NewChatroom, Pauses}
+import com.github.dafutils.chatroom.http.model.{AddMessages, Chatroom, Pauses}
 import com.github.dafutils.chatroom.service.AbstractServices
 
 trait HttpRoute {
@@ -38,7 +38,7 @@ trait HttpRoute {
       (handleExceptions(exceptionHandler)
         & logRequestResult("requests", InfoLevel)) {
         path("chatrooms") {
-          (post & entity(as[NewChatroom])) { newChatroom =>
+          (post & entity(as[Chatroom])) { newChatroom =>
             complete(
               chatroomMessageRepository.createChatroom(newChatroom)
             )
@@ -51,7 +51,7 @@ trait HttpRoute {
                 chatroomService.storeMessages(addedMessages)
               )
             } ~
-              (get & parameters("from".as[Long], "to".as[Long], "chatroomId".as[Int])) { (from, to, chatroom) =>
+              (get & parameters("from".as[Long], "to".as[Long], "chatroomId".as[Long])) { (from, to, chatroom) =>
                 //TODO: Perhaps there should be a limit enforced on the lentgh of the period that can be requested?
                 //      Since we are returning the result, we will most likely have to load all messages into memory.
                 //      Unless we do some streaming HTTP trickery...
@@ -62,7 +62,7 @@ trait HttpRoute {
           } ~
           (path("longPauses")
             & get
-            & parameters("from".as[Long], "to".as[Long], "chatroomId".as[Int])) { (from, to, chatroom) =>
+            & parameters("from".as[Long], "to".as[Long], "chatroomId".as[Long])) { (from, to, chatroom) =>
             //TODO: Same concern about limiting the period: not from a memory point of view as above, but because of 
             //      execution time: we have to scan the entire period to count all pauses that are longer than the 
             //      average

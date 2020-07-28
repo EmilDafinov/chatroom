@@ -8,7 +8,7 @@ import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.stream.Materializer
 import com.github.dafutils.chatroom.http.JsonSupport._
 import com.github.dafutils.chatroom.http.exception.MissingPreviousBatchException
-import com.github.dafutils.chatroom.http.model.{AddMessages, ChatroomMessage, ChatroomMessageWithStats, NewChatroom, Pauses}
+import com.github.dafutils.chatroom.http.model.{AddMessages, ChatroomMessage, ChatroomMessageWithStats, Chatroom, Pauses}
 import com.github.dafutils.chatroom.service.hbase.ChatroomMessageRepository
 import com.github.dafutils.chatroom.service.{AbstractServices, ChatroomService, PausesService}
 import com.github.dafutils.chatroom.{AkkaDependencies, RouteTestSpec}
@@ -51,10 +51,10 @@ class HttpRouteTest extends RouteTestSpec with ScalatestRouteTest {
 
       when {
         tested.chatroomMessageRepository.createChatroom(
-          mockEq(parse(testRequestBody).extract[NewChatroom])
+          mockEq(parse(testRequestBody).extract[Chatroom])
         )(any[Materializer])
       } thenReturn {
-        Future.successful(parse(testRequestBody).extract[NewChatroom])
+        Future.successful(parse(testRequestBody).extract[Chatroom])
       }
 
       //When
@@ -161,7 +161,7 @@ class HttpRouteTest extends RouteTestSpec with ScalatestRouteTest {
       //Given
       val testToTimestamp = Instant.now().toEpochMilli
       val testFromTimestamp = testToTimestamp - 10000
-      val testChatroomId = 1
+      val testChatroomId = 1L
       
       val expectedMessages = Seq(
         ChatroomMessageWithStats(
@@ -217,7 +217,7 @@ class HttpRouteTest extends RouteTestSpec with ScalatestRouteTest {
       //Given
       val testToTimestamp = Instant.now().toEpochMilli
       val testFromTimestamp = testToTimestamp - 10000
-      val testChatroomId = 1
+      val testChatroomId = 1L
       
       val expectedResponse = """{ "count": 4 }}"""
       
@@ -228,7 +228,7 @@ class HttpRouteTest extends RouteTestSpec with ScalatestRouteTest {
           to = mockEq(testToTimestamp)
         )(any[Materializer], any[ExecutionContext])
       } thenReturn {
-        Future.successful(4)
+        Future.successful(4L)
       }
       
       //When

@@ -1,3 +1,3 @@
 package com.github.dafutils.chatroom.http.model
 
-case class BatchLastMessage(chatroomId: Int, lastMessageIndex: Int, lastMessageTimestamp: Long)
+case class BatchLastMessage(chatroomId: Long, lastMessageIndex: Long, lastMessageTimestamp: Long)

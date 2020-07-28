@@ -46,6 +46,8 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
         sortedMessagesInBatch = sortedMessages
       )
 
+      //Running the tail message persistance first ensures they are always persisted, even if the request fails
+      //due to the first message
       tailMessagesPersisted <- tailMessagesSource
         .via(chatroomMessageRepository.persistMessages)
         //This is a potential source if inconsistency: if a message gets persisted, but updating the metrics fails,
@@ -53,6 +55,7 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
         .via(chatroomMessageRepository.updateChatroomMetrics)
         .runWith(Sink.seq)
 
+      //Store the head of the batch last, possibly failing we weren't able to resolve the time since the previous message
       headMessagePersisted <- headMessageSource
         .via(chatroomMessageRepository.persistMessages)
         //This is a potential source if inconsistency: if a message gets persisted, but updating the metrics fails,
@@ -65,7 +68,7 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
 
   //Enrich the head of the batch with the length of the pause before it.
   //This requires looking up the las message from the previous batch fro HBase in most cases.
-  private def enrichHeadMessage(chatRoomId: Int,
+  private def enrichHeadMessage(chatRoomId: Long,
                                 messagesFromBatchAlreadyPersisted: Seq[ChatroomMessage],
                                 headMessage: ChatroomMessage)
                                (implicit mat: Materializer, ex: ExecutionContext) = {
@@ -111,7 +114,7 @@ class ChatroomService(chatroomMessageRepository: ChatroomMessageRepository) {
   }
 
 
-  private def enrichTailMessages(chatRoomId: Int,
+  private def enrichTailMessages(chatRoomId: Long,
                                  messagesFromBatchAlreadyPersisted: Seq[ChatroomMessage],
                                  sortedMessagesInBatch: Seq[ChatroomMessage])
                                 (implicit mat: Materializer, ex: ExecutionContext) = {
