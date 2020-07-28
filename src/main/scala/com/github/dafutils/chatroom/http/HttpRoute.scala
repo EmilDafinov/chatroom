@@ -3,25 +3,29 @@ package com.github.dafutils.chatroom.http
 import akka.event.Logging
 import akka.event.Logging.InfoLevel
 import akka.http.scaladsl.model.HttpResponse
-import akka.http.scaladsl.model.StatusCodes.BadRequest
+import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.server.Directives.{logRequestResult, _}
 import akka.http.scaladsl.server.{ExceptionHandler, Route}
 import com.github.dafutils.chatroom.AkkaDependencies
 import com.github.dafutils.chatroom.http.exception.MissingPreviousBatchException
 import com.github.dafutils.chatroom.http.model.{AddMessages, NewChatroom, Pauses}
-import com.github.dafutils.chatroom.service.Services
+import com.github.dafutils.chatroom.service.{AbstractServices, Services}
+import JsonSupport._
 
 trait HttpRoute {
-  this: AkkaDependencies with Services =>
+  this: AkkaDependencies with AbstractServices =>
   private val log = Logging(actorSystem, classOf[HttpRoute])
 
-  import JsonSupport._
 
   val exceptionHandler = ExceptionHandler {
     case ex: MissingPreviousBatchException =>
       log.error(ex, ex.getMessage)
       complete(
-        HttpResponse(status = BadRequest, entity = ex.getMessage)
+        //Not sure what the appropriate error code would be in that case:
+        //This should occur if we could not determine the timetamp of the last
+        //message of the previous batch, and thus cannon calculate the pause between the batches
+        //Therefore we error out and we have the client retry
+        HttpResponse(status = ImATeapot, entity = ex.getMessage)
       )
   }
 
@@ -32,7 +36,7 @@ trait HttpRoute {
       complete(getClass.getPackage.getImplementationVersion)
     } ~
       (handleExceptions(exceptionHandler)
-        & logRequestResult("requests", InfoLevel)) {
+        & logRequestResult("requests", InfoLevel) & extractRequest) { request => 
         path("chatrooms") {
           (post & entity(as[NewChatroom])) { newChatroom =>
             complete(
@@ -41,6 +45,7 @@ trait HttpRoute {
           }
         } ~
           path("messages") {
+            
             (post & entity(as[AddMessages])) { addedMessages =>
               complete(
                 chatroomService.storeMessages(addedMessages)

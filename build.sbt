@@ -5,6 +5,7 @@ lazy val json4sVersion = "3.7.0-M4"
 val AkkaVersion = "2.5.31"
 val scalatestVersuib = "3.2.0"
 
+val AkkaHttpVersion = "10.1.12"
 lazy val root = (project in file("."))
   .enablePlugins(
     JavaServerAppPackaging,
@@ -23,7 +24,7 @@ lazy val root = (project in file("."))
     publishArtifact in ThisBuild in packageSrc := false,
     dockerExposedPorts ++= Seq(9000),
     libraryDependencies ++= Seq(
-      "com.typesafe.akka" %% "akka-http"   % "10.1.12",
+      "com.typesafe.akka" %% "akka-http" % AkkaHttpVersion,
       "com.lightbend.akka" %% "akka-stream-alpakka-hbase" % "2.0.1",
       "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
       "com.typesafe.akka" %% "akka-slf4j" % AkkaVersion,
@@ -41,6 +42,9 @@ lazy val root = (project in file("."))
       "org.scalatest" %% "scalatest-shouldmatchers" % scalatestVersuib % Test,
       "org.scalatestplus" %% "mockito-3-3" % "3.2.0.0" % Test,
       "org.mockito" % "mockito-core" % "3.4.4" % Test,
+      "com.typesafe.akka" %% "akka-testkit" % "2.5.21" % Test,
+      "com.typesafe.akka" %% "akka-stream-testkit" % "2.5.26" % Test,
+      "com.typesafe.akka" %% "akka-http-testkit" % AkkaHttpVersion % Test
       
     ),
     dockerBaseImage := "openjdk:11.0.7-jre",

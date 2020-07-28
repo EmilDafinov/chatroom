@@ -1,5 +1,6 @@
 package com.github.dafutils.chatroom.service.hbase
 
+import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.alpakka.hbase.HTableSettings
 import akka.stream.alpakka.hbase.scaladsl.HTableStage
@@ -21,6 +22,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
 
+  // Describes the HBase operation needed to store the information regarding a chatroom
   private val chatroomConverter: NewChatroom => Seq[Mutation] = { chatroom =>
     import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable._
 
@@ -34,6 +36,7 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     List(put)
   }
 
+  //The increment necessary in order to update the chatroom stats following persisting of a message
   private val chatroomStatsConverter: ChatroomMessageWithStats => Seq[Mutation] = { message =>
     import com.github.dafutils.chatroom.service.hbase.families.ChatroomsTable._
 
@@ -62,6 +65,8 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     converter = chatroomConverter
   )
 
+  //Storing a message. Note that for each message we should have resolved the length of the pause
+  //since the previous message in the chatroom
   private val messagesConverter: ChatroomMessageWithStats => Seq[Mutation] = { message =>
 
     val put = new Put(MessagesTable.rowKey(message.chatroomId, message.message.timestamp))
@@ -105,28 +110,42 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     pingChatroomsTable.flatMap(_ => pingMessagesTable)
   }
 
-  def createChatroom(chatroom: NewChatroom)(implicit mat: Materializer) = {
+  /**
+   * Persist a chatroom.
+   * */
+  def createChatroom(chatroom: NewChatroom)(implicit mat: Materializer): Future[NewChatroom] = {
     Source
       .single(chatroom)
       .via(HTableStage.flow(createChatroomSettings))
+      .runWith(Sink.head)
   }
 
-  def persistMessages(implicit mat: Materializer) = {
+  /**
+   * Persistance flow used to store chatroom messages in HBase. Messages have already been enriched with 
+   * the length of the preceding pause.
+   * */
+  def persistMessages(implicit mat: Materializer): Flow[ChatroomMessageWithStats, ChatroomMessageWithStats, NotUsed] = {
     Flow[ChatroomMessageWithStats]
       .via(HTableStage.flow(messagesSettings))
   }
 
-  def updateChatroomMetrics(implicit mat: Materializer) = {
+  /**
+   * Update the total pause duration and total pause count for a chatroom
+   * */
+  def updateChatroomMetrics(implicit mat: Materializer): Flow[ChatroomMessageWithStats, ChatroomMessageWithStats, NotUsed] = {
     Flow[ChatroomMessageWithStats]
       .via(HTableStage.flow(chatroomMetricsSettings))
   }
 
 
+  /**
+   * Retrieve the previous message in a chatroom from HBase, if it already exists in the datastore.
+   * */
   def previousMessageInChatroom(chatroomId: Int, messageIndex: Int, messageTimestamp: Long)
                                (implicit mat: Materializer): Future[Option[ChatroomMessageWithStats]] = {
 
-    require(messageIndex > 1, s"Attempted to get the previous message time for message with index $messageIndex in $chatroomId.")
-
+    require(messageIndex > 1, s"Attempted to get the previous message time for message with index $messageIndex in $chatroomId. Only makes sense for the second and later messages.")
+    
     HTableStage
       .source(
         scan = previousRowInTable(
@@ -147,6 +166,9 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     previousMessageScan
   }
 
+  /**
+   * Retrieve all messages stored for a given chatroom id for the indicated period (from time included, to time exclusive)
+   * */
   def chatroomMessagesInPeriod(chatroomId: Int, from: Long, to: Long)
                               (implicit mat: Materializer): Future[Seq[ChatroomMessageWithStats]] = {
 
@@ -169,6 +191,10 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
       )
     )
 
+  /**
+   * Calculate the average pause for a chatroom. We do this by dividing the total pause time by the total pause
+   * count. Both of these are stored in the chatroom row.
+   * */
   def averagePause(chatroomId: Int)(implicit mat: Materializer, ec: ExecutionContext): Future[Option[Double]] = {
     HTableStage
       .source(new Scan(new Get(ChatroomsTable.rowKey(chatroomId, modBy))), chatroomMetricsSettings)
@@ -180,6 +206,10 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
       .runWith(Sink.headOption)
   }
 
+  /**
+   * Count the long pauses in a timerange by iterating over it and counting the messages with a pause before them larger than 
+   * the average
+   * */
   def countLongPauses(chatroomId: Int, from: Long, to: Long, averagePauseTime: Double)(implicit mat: Materializer) = {
     //TODO: large periods...will this attempt to load everything into memory?
     require(averagePauseTime > 0, "The average pause length cannot be negative")

@@ -7,7 +7,13 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.HBaseConfiguration
 import org.apache.hadoop.hbase.client.HBaseAdmin
 
-trait Services {
+trait AbstractServices {
+  val chatroomMessageRepository: ChatroomMessageRepository
+  val chatroomService: ChatroomService
+  val pausesService: PausesService
+}
+
+trait Services extends AbstractServices {
   this: AkkaDependencies =>
 
   val applicationConfin = ConfigFactory.load()
