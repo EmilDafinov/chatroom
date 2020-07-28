@@ -14,7 +14,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.TableName
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
-import org.apache.hadoop.hbase.filter.{LongComparator, SingleColumnValueFilter}
+import org.apache.hadoop.hbase.filter.{FilterList, LongComparator, SingleColumnValueFilter}
 import uk.gov.hmrc.emailaddress.EmailAddress
 
 import scala.collection.immutable.Seq
@@ -148,22 +148,23 @@ class ChatroomMessageRepository(configuration: Configuration, modBy: Int) {
     
     HTableStage
       .source(
-        scan = previousRowInTable(
-          currentRow = MessagesTable.rowKey(chatroomId, messageTimestamp)
-        ),
+        scan = {
+          val previousMessageScan = new Scan(MessagesTable.rowKey(chatroomId, messageTimestamp))
+          previousMessageScan.setReversed(true)
+          previousMessageScan.setMaxResultSize(1)
+          previousMessageScan.setFilter(
+            new FilterList(
+              FilterList.Operator.MUST_PASS_ALL,
+              new SingleColumnValueFilter(messageContentColumnName, chatroomIdColumnName, CompareOp.EQUAL, new LongComparator(chatroomId)),
+              new SingleColumnValueFilter(messageContentColumnName, indexColumnName, CompareOp.EQUAL, new LongComparator(messageIndex - 1)),
+            )
+          )
+          previousMessageScan
+        },
         settings = messagesSettings
       )
       .map(extractChatroomMessageWithStats)
-      .filter(_.chatroomId == chatroomId)
-      .filter(_.message.index == messageIndex - 1)
       .runWith(Sink.headOption)
-  }
-  
-  private def previousRowInTable(currentRow: Array[Byte]): Scan = {
-    val previousMessageScan = new Scan(currentRow)
-    previousMessageScan.setReversed(true)
-    previousMessageScan.setMaxResultSize(1)
-    previousMessageScan
   }
 
   /**
