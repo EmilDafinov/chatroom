@@ -1,12 +1,14 @@
 package com.github.dafutils.chatroom.http
 
+import java.time.Instant
+
 import akka.http.scaladsl.model.StatusCodes.ImATeapot
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.stream.Materializer
 import com.github.dafutils.chatroom.http.JsonSupport._
 import com.github.dafutils.chatroom.http.exception.MissingPreviousBatchException
-import com.github.dafutils.chatroom.http.model.{AddMessages, ChatroomMessage, ChatroomMessageWithStats, NewChatroom}
+import com.github.dafutils.chatroom.http.model.{AddMessages, ChatroomMessage, ChatroomMessageWithStats, NewChatroom, Pauses}
 import com.github.dafutils.chatroom.service.hbase.ChatroomMessageRepository
 import com.github.dafutils.chatroom.service.{AbstractServices, ChatroomService, PausesService}
 import com.github.dafutils.chatroom.{AkkaDependencies, RouteTestSpec}
@@ -152,6 +154,89 @@ class HttpRouteTest extends RouteTestSpec with ScalatestRouteTest {
         check {
           //Then
           response.status shouldEqual ImATeapot
+        }
+    }
+
+    "retrieve all known messages in a given time range" in {
+      //Given
+      val testToTimestamp = Instant.now().toEpochMilli
+      val testFromTimestamp = testToTimestamp - 10000
+      val testChatroomId = 1
+      
+      val expectedMessages = Seq(
+        ChatroomMessageWithStats(
+          chatroomId = 1,
+          timeSincePreviousMessage = 10L,
+          message = ChatroomMessage(
+            index = 2,
+            timestamp = 1595898612517L,
+            author = EmailAddress("me@example.com"),
+            message = "Foo"
+          )
+        ),
+        ChatroomMessageWithStats(
+          chatroomId = 1,
+          timeSincePreviousMessage = 20L,
+          message = ChatroomMessage(
+            index = 3,
+            timestamp = 1595898612717L,
+            author = EmailAddress("you@example.com"),
+            message = "Bar"
+          )
+        ),
+      )
+
+      when {
+        tested.chatroomMessageRepository.chatroomMessagesInPeriod(
+          chatroomId = mockEq(testChatroomId),
+          from = mockEq(testFromTimestamp),
+          to = mockEq(testToTimestamp)
+        )(any[Materializer])
+      } thenReturn {
+        Future.successful(expectedMessages)
+      }
+
+      val expectedResponse =
+        """
+          |[
+          |   { "chatroomId": 1, "timeSincePreviousMessage": 10, "message": {"index": 2, "timestamp": 1595898612517, "author": "me@example.com", "message": "Foo"}},
+          |   { "chatroomId": 1, "timeSincePreviousMessage": 20, "message": {"index": 3, "timestamp": 1595898612717, "author": "you@example.com", "message": "Bar"}}
+          |]
+          |""".stripMargin
+      
+      //When
+      Get(uri = s"/messages?chatroomId=${testChatroomId}&from=${testFromTimestamp}&to=${testToTimestamp}") ~>
+        Route.seal(tested.route) ~>
+        check {
+          //Then
+          responseAs[JValue] shouldEqual parse(expectedResponse)
+        }
+    }
+    
+    "count the long pauses in a time range" in {
+      //Given
+      val testToTimestamp = Instant.now().toEpochMilli
+      val testFromTimestamp = testToTimestamp - 10000
+      val testChatroomId = 1
+      
+      val expectedResponse = """{ "count": 4 }}"""
+      
+      when {
+        tested.pausesService.countLongPauses(
+          chatroomId = mockEq(testChatroomId),
+          from = mockEq(testFromTimestamp),
+          to = mockEq(testToTimestamp)
+        )(any[Materializer], any[ExecutionContext])
+      } thenReturn {
+        Future.successful(4)
+      }
+      
+      //When
+      Get(uri = s"/longPauses?chatroomId=${testChatroomId}&from=${testFromTimestamp}&to=${testToTimestamp}") ~>
+        Route.seal(tested.route) ~>
+        check {
+          //Then
+          responseAs[JValue] shouldEqual parse(expectedResponse)
         }
     }
   }

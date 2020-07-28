@@ -7,10 +7,10 @@ import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.server.Directives.{logRequestResult, _}
 import akka.http.scaladsl.server.{ExceptionHandler, Route}
 import com.github.dafutils.chatroom.AkkaDependencies
+import com.github.dafutils.chatroom.http.JsonSupport._
 import com.github.dafutils.chatroom.http.exception.MissingPreviousBatchException
 import com.github.dafutils.chatroom.http.model.{AddMessages, NewChatroom, Pauses}
-import com.github.dafutils.chatroom.service.{AbstractServices, Services}
-import JsonSupport._
+import com.github.dafutils.chatroom.service.AbstractServices
 
 trait HttpRoute {
   this: AkkaDependencies with AbstractServices =>
@@ -36,7 +36,7 @@ trait HttpRoute {
       complete(getClass.getPackage.getImplementationVersion)
     } ~
       (handleExceptions(exceptionHandler)
-        & logRequestResult("requests", InfoLevel) & extractRequest) { request => 
+        & logRequestResult("requests", InfoLevel)) {
         path("chatrooms") {
           (post & entity(as[NewChatroom])) { newChatroom =>
             complete(
@@ -45,7 +45,7 @@ trait HttpRoute {
           }
         } ~
           path("messages") {
-            
+
             (post & entity(as[AddMessages])) { addedMessages =>
               complete(
                 chatroomService.storeMessages(addedMessages)
@@ -67,7 +67,7 @@ trait HttpRoute {
             //      execution time: we have to scan the entire period to count all pauses that are longer than the 
             //      average
             complete(
-              pausesService.countLongPauses(chatroom, from, to).map(Pauses.apply)
+              pausesService.countLongPauses(chatroomId = chatroom, from = from, to = to).map(Pauses.apply)
             )
           }
       }
